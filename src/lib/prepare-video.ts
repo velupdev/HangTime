@@ -29,6 +29,16 @@ function isQuickTime(file: File): boolean {
   );
 }
 
+/** Phones and Safari play HEVC/MOV. ffmpeg.wasm usually OOMs there. */
+function useNativeFile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+  if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return true;
+  const safari = /Safari/i.test(ua) && !/Chrome|Chromium|Edg|OPR|Firefox/i.test(ua);
+  return safari;
+}
+
 function testPlayable(url: string, timeoutMs = 4500): Promise<boolean> {
   return new Promise((resolve) => {
     const v = document.createElement("video");
@@ -74,10 +84,7 @@ async function getFfmpeg(onProgress: PrepareProgress): Promise<FFmpeg> {
   }
 }
 
-async function runToBlob(
-  ff: FFmpeg,
-  args: string[],
-): Promise<string> {
+async function runToBlob(ff: FFmpeg, args: string[]): Promise<string> {
   await ff.exec(args);
   const data = await ff.readFile("out.mp4");
   const raw = data instanceof Uint8Array ? data : new TextEncoder().encode(String(data));
@@ -100,21 +107,10 @@ async function transcode(file: File, onProgress: PrepareProgress): Promise<strin
   onProgress(0.16, "Trying a fast remux for PC playback…");
   try {
     const remuxed = await runToBlob(ff, [
-      "-i",
-      "input",
-      "-an",
-      "-c",
-      "copy",
-      "-movflags",
-      "+faststart",
-      "out.mp4",
+      "-i", "input", "-an", "-c", "copy", "-movflags", "+faststart", "out.mp4",
     ]);
     if (await testPlayable(remuxed, 5000)) {
-      try {
-        await ff.deleteFile("input");
-      } catch {
-        /* ignore */
-      }
+      try { await ff.deleteFile("input"); } catch { /* ignore */ }
       return remuxed;
     }
     URL.revokeObjectURL(remuxed);
@@ -125,37 +121,14 @@ async function transcode(file: File, onProgress: PrepareProgress): Promise<strin
   onProgress(0.22, "Converting so Chrome/Edge on a PC can play it…");
   try {
     const converted = await runToBlob(ff, [
-      "-i",
-      "input",
-      "-an",
-      "-vf",
-      "scale='min(960,iw)':-2",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "ultrafast",
-      "-crf",
-      "28",
-      "-pix_fmt",
-      "yuv420p",
-      "-g",
-      "8",
-      "-movflags",
-      "+faststart",
-      "out.mp4",
+      "-i", "input", "-an", "-vf", "scale='min(960,iw)':-2", "-c:v", "libx264",
+      "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-g", "8",
+      "-movflags", "+faststart", "out.mp4",
     ]);
-    try {
-      await ff.deleteFile("input");
-    } catch {
-      /* ignore */
-    }
+    try { await ff.deleteFile("input"); } catch { /* ignore */ }
     return converted;
   } catch {
-    try {
-      await ff.deleteFile("input");
-    } catch {
-      /* ignore */
-    }
+    try { await ff.deleteFile("input"); } catch { /* ignore */ }
     throw new Error("convert-failed");
   }
 }
@@ -167,15 +140,18 @@ export async function prepareVideoFile(
   onProgress(0.04, "Reading frame rate…");
   const meta = await probeFileMeta(file);
   const original = URL.createObjectURL(file);
+
+  if (useNativeFile()) {
+    onProgress(1, "Ready");
+    return { url: original, meta };
+  }
+
   const nativeOk = await testPlayable(original);
   const hevcOk = canPlayHevc();
   const mov = isQuickTime(file);
 
-  // PC Chrome/Edge usually cannot play iPhone .mov even when a test looks “ok”.
-  if (nativeOk && !mov) {
-    return { url: original, meta };
-  }
-  if (nativeOk && mov && hevcOk) {
+  if (nativeOk && (!mov || hevcOk)) {
+    onProgress(1, "Ready");
     return { url: original, meta };
   }
 
@@ -190,10 +166,8 @@ export async function prepareVideoFile(
     onProgress(1, "Ready");
     return { url: converted, meta };
   } catch {
-    URL.revokeObjectURL(original);
-    throw new Error(
-      "This browser can’t play that clip (often HEVC). On iPhone: Settings → Camera → Formats → Most Compatible. On Android: share the original mp4 from Files or Google Photos, not a chat compress. Or tap Try sample jump.",
-    );
+    onProgress(1, "Ready");
+    return { url: original, meta };
   }
 }
 
