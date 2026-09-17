@@ -36,8 +36,15 @@
     line-height: 1.5;
   }
 
-  h1, h2, h3 { text-wrap: balance; }
-  p { text-wrap: pretty; }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
 
   button:not(:disabled),
   [role="button"]:not(:disabled) {
