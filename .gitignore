@@ -7,7 +7,9 @@ dist
 !.env.example
 *.mp4
 *.mov
+!public/*.mp4
 .DS_Store
 artifacts
 attachments
 screenshots
+.grok

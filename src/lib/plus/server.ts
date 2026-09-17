@@ -55,10 +55,17 @@ async function readOffer(): Promise<PlusOffer> {
   `;
   const sold = Number(rows[0]?.n ?? 0);
   const remaining = Math.max(0, LIFETIME_CAP - sold);
-  return { sold, cap: LIFETIME_CAP, remaining, lifetimeOpen: sold < LIFETIME_CAP };
+  return {
+    sold,
+    cap: LIFETIME_CAP,
+    remaining,
+    lifetimeOpen: sold < LIFETIME_CAP,
+  };
 }
 
-export const getPlusOffer = createServerFn({ method: "GET" }).handler(async () => readOffer());
+export const getPlusOffer = createServerFn({ method: "GET" }).handler(
+  async () => readOffer(),
+);
 
 export const getPlusStatus = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -71,7 +78,11 @@ export const getPlusStatus = createServerFn({ method: "GET" })
       select email from "user" where id = ${context.userId} limit 1
     `;
     const offer = await readOffer();
-    return { plus: rows.length > 0, offer, admin: isAdminEmail(me[0]?.email) };
+    return {
+      plus: rows.length > 0,
+      offer,
+      admin: isAdminEmail(me[0]?.email),
+    };
   });
 
 export const unlockPlus = createServerFn({ method: "POST" })
@@ -82,7 +93,11 @@ export const unlockPlus = createServerFn({ method: "POST" })
       select user_id from plus_members where user_id = ${context.userId} limit 1
     `;
     if (existing.length > 0) return { plus: true };
-    await sql`insert into plus_members (user_id) values (${context.userId}) on conflict (user_id) do nothing`;
+    await sql`
+      insert into plus_members (user_id)
+      values (${context.userId})
+      on conflict (user_id) do nothing
+    `;
     return { plus: true };
   });
 
@@ -91,7 +106,10 @@ export const listPlayers = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const sql = await getSql();
     const rows = await sql<PlayerRow>`
-      select id, name, created_at from players where user_id = ${context.userId} order by name
+      select id, name, created_at
+      from players
+      where user_id = ${context.userId}
+      order by name
     `;
     return rows.map(mapPlayer);
   });
@@ -103,7 +121,9 @@ export const addPlayer = createServerFn({ method: "POST" })
     if (!name) return null;
     const sql = await getSql();
     const rows = await sql<PlayerRow>`
-      insert into players (user_id, name) values (${context.userId}, ${name}) returning id, name, created_at
+      insert into players (user_id, name)
+      values (${context.userId}, ${name})
+      returning id, name, created_at
     `;
     return rows[0] ? mapPlayer(rows[0]) : null;
   });
@@ -113,7 +133,9 @@ export const deletePlayer = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context, data: id }) => {
     const sql = await getSql();
-    await sql`delete from players where id = ${id} and user_id = ${context.userId}`;
+    await sql`
+      delete from players where id = ${id} and user_id = ${context.userId}
+    `;
     return { ok: true };
   });
 
@@ -124,25 +146,41 @@ export const listJumps = createServerFn({ method: "POST" })
     const sql = await getSql();
     const rows = await sql<JumpRow>`
       select id, player_id, height_in, flight_s, fps, notes, created_at
-      from jumps where user_id = ${context.userId} and player_id = ${playerId}
+      from jumps
+      where user_id = ${context.userId} and player_id = ${playerId}
       order by created_at desc
     `;
     return rows.map(mapJump);
   });
 
 export const addJump = createServerFn({ method: "POST" })
-  .validator((input: { playerId: number; heightIn: number; flightS: number; fps: number; notes?: string }) => input)
+  .validator((input: {
+    playerId: number;
+    heightIn: number;
+    flightS: number;
+    fps: number;
+    notes?: string;
+  }) => input)
   .middleware([authMiddleware])
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     const owned = await sql<{ id: number }>`
-      select id from players where id = ${data.playerId} and user_id = ${context.userId} limit 1
+      select id from players
+      where id = ${data.playerId} and user_id = ${context.userId}
+      limit 1
     `;
     if (!owned.length) return null;
     const notes = data.notes?.trim().slice(0, 200) || null;
     const rows = await sql<JumpRow>`
       insert into jumps (user_id, player_id, height_in, flight_s, fps, notes)
-      values (${context.userId}, ${data.playerId}, ${data.heightIn}, ${data.flightS}, ${data.fps}, ${notes})
+      values (
+        ${context.userId},
+        ${data.playerId},
+        ${data.heightIn},
+        ${data.flightS},
+        ${data.fps},
+        ${notes}
+      )
       returning id, player_id, height_in, flight_s, fps, notes, created_at
     `;
     return rows[0] ? mapJump(rows[0]) : null;

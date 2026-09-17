@@ -32,18 +32,35 @@ function AdminPage() {
     <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-10">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">Owner</p>
-          <h1 className="font-display text-4xl font-extrabold tracking-wide sm:text-5xl">Users</h1>
+          <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
+            Owner
+          </p>
+          <h1 className="font-display text-4xl font-extrabold tracking-wide sm:text-5xl">
+            Users
+          </h1>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Link to="/" className="inline-flex h-11 min-h-11 items-center rounded-md px-3 text-sm font-semibold text-muted hover:text-fg">Measure</Link>
-          <Link to="/plus" className="inline-flex h-11 min-h-11 items-center rounded-md px-3 text-sm font-semibold text-muted hover:text-fg">Plus</Link>
+          <Link
+            to="/"
+            className="inline-flex h-11 min-h-11 items-center rounded-md px-3 text-sm font-semibold text-muted hover:text-fg"
+          >
+            Measure
+          </Link>
+          <Link
+            to="/plus"
+            className="inline-flex h-11 min-h-11 items-center rounded-md px-3 text-sm font-semibold text-muted hover:text-fg"
+          >
+            Plus
+          </Link>
           {user ? <UserButton /> : null}
         </div>
       </header>
+
       <SignInGate fallback={<RedirectToSignIn />}>
         {error ? (
-          <p className="rounded-lg bg-surface px-5 py-8 text-sm text-fg shadow-[var(--shadow-border)]">{error} This page is only for HangTime owners.</p>
+          <p className="rounded-lg bg-surface px-5 py-8 text-sm text-fg shadow-[var(--shadow-border)]">
+            {error} This page is only for HangTime owners.
+          </p>
         ) : data === null ? (
           <div className="h-40 animate-pulse rounded-lg bg-surface" />
         ) : (
@@ -85,16 +102,28 @@ function AdminBody({ data }: { data: AdminSnapshot }) {
                 <tr key={u.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 text-fg">{u.name || "—"}</td>
                   <td className="px-4 py-3 text-muted">{u.email}</td>
-                  <td className="px-4 py-3">{u.plus ? <span className="font-semibold text-primary">Plus</span> : <span className="text-muted">Signed in</span>}</td>
+                  <td className="px-4 py-3">
+                    {u.plus ? (
+                      <span className="font-semibold text-primary">Plus</span>
+                    ) : (
+                      <span className="text-muted">Signed in</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 tabular-nums">{u.playerCount}</td>
                   <td className="px-4 py-3 tabular-nums">{u.jumpCount}</td>
-                  <td className="px-4 py-3 tabular-nums text-muted">{u.createdAt.slice(0, 10)}</td>
+                  <td className="px-4 py-3 tabular-nums text-muted">
+                    {u.createdAt.slice(0, 10)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </section>
+      <p className="text-xs text-muted">
+        People who only measure a jump without signing in do not appear here.
+        Card payments also show in your Stripe dashboard (sandbox vs live).
+      </p>
     </>
   );
 }
@@ -102,8 +131,12 @@ function AdminBody({ data }: { data: AdminSnapshot }) {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg bg-surface px-4 py-3 shadow-[var(--shadow-border)]">
-      <dt className="text-xs font-semibold tracking-[0.14em] text-muted uppercase">{label}</dt>
-      <dd className="font-display mt-1 text-3xl font-extrabold tabular-nums text-primary">{value}</dd>
+      <dt className="text-xs font-semibold tracking-[0.14em] text-muted uppercase">
+        {label}
+      </dt>
+      <dd className="font-display mt-1 text-3xl font-extrabold tabular-nums text-primary">
+        {value}
+      </dd>
     </div>
   );
 }
