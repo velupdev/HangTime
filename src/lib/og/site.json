@@ -1,5 +1,6 @@
 {
   "title": "HangTime",
   "card": "custom",
-  "description": "Measure vertical jump from slow-mo video using flight time."
+  "image": "/og.png",
+  "description": "Measure the hop. Vertical jump from slow-mo video."
 }
