@@ -55,6 +55,13 @@ function Login() {
           {error}
         </p>
       ) : null}
+      {error ? (
+        <p className="text-xs text-muted">
+          Measuring a jump still works without signing in. Plus login has to
+          save your account on the server — that piece is not connected on this
+          live site yet.
+        </p>
+      ) : null}
       <p className="rounded-md bg-surface px-4 py-3 text-xs text-muted shadow-[var(--shadow-border)]">
         Skip Private / Incognito for this step. Sign-in often works there, but
         HangTime Plus may not stay unlocked after you close the tab. A regular
