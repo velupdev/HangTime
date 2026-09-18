@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { GROK_PROVIDERS, authEnabled, signIn } from "@/lib/auth/client";
+import { authEnabled, signIn } from "@/lib/auth/client";
+
+const LOGIN_PROVIDERS = [{ providerId: "google", label: "Google" }] as const;
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -35,7 +37,7 @@ function Login() {
       </div>
       {authEnabled ? (
         <div className="flex flex-col gap-2">
-          {GROK_PROVIDERS.map((p) => (
+          {LOGIN_PROVIDERS.map((p) => (
             <button
               key={p.providerId}
               type="button"
@@ -53,13 +55,6 @@ function Login() {
       {error ? (
         <p className="rounded-md bg-surface px-4 py-3 text-sm text-fg shadow-[var(--shadow-border)]">
           {error}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="text-xs text-muted">
-          Measuring a jump still works without signing in. Plus login has to
-          save your account on the server — that piece is not connected on this
-          live site yet.
         </p>
       ) : null}
       <p className="rounded-md bg-surface px-4 py-3 text-xs text-muted shadow-[var(--shadow-border)]">
