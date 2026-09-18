@@ -65,6 +65,9 @@ function Login() {
       <Link to="/" className="text-sm text-muted underline-offset-4 hover:underline">
         Back to HangTime
       </Link>
+      <Link to="/privacy" className="text-xs text-muted underline-offset-4 hover:underline">
+        Privacy
+      </Link>
     </main>
   );
 }
