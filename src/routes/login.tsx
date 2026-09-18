@@ -30,7 +30,7 @@ function Login() {
         </h1>
         <p className="mt-2 text-sm text-muted">
           Sign in to unlock HangTime Plus. First 100 get $10 lifetime to track
-          jumps over time — one athlete or a whole roster. After that, $10/year.
+          jumps over time — one athlete or a whole roster.
         </p>
       </div>
       {authEnabled ? (
@@ -55,9 +55,10 @@ function Login() {
           {error}
         </p>
       ) : null}
-      <p className="text-xs text-muted">
-        If a tap does nothing, leave Private/Incognito and allow the page to
-        leave Safari for Google or X.
+      <p className="rounded-md bg-surface px-4 py-3 text-xs text-muted shadow-[var(--shadow-border)]">
+        Skip Private / Incognito for this step. Sign-in often works there, but
+        HangTime Plus may not stay unlocked after you close the tab. A regular
+        Safari or Chrome window keeps you signed in.
       </p>
       <Link to="/" className="text-sm text-muted underline-offset-4 hover:underline">
         Back to HangTime
