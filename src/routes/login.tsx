@@ -1,9 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { GROK_PROVIDERS, authEnabled, signIn } from "@/lib/auth/client";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
 function Login() {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onProvider(providerId: string, label: string) {
+    setError(null);
+    setBusy(label);
+    try {
+      await signIn(providerId, { callbackURL: "/plus", errorCallbackURL: "/login" });
+    } catch (err) {
+      setBusy(null);
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+    }
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-4 py-10">
       <div>
@@ -24,16 +39,26 @@ function Login() {
             <button
               key={p.providerId}
               type="button"
-              onClick={() => signIn(p.providerId, { callbackURL: "/plus" })}
-              className="h-11 min-h-11 w-full rounded-md bg-primary px-4 text-sm font-semibold text-primary-fg hover:bg-primary/90"
+              disabled={busy !== null}
+              onClick={() => void onProvider(p.providerId, p.label)}
+              className="h-12 min-h-12 w-full touch-manipulation rounded-md bg-primary px-4 text-sm font-semibold text-primary-fg hover:bg-primary/90 disabled:opacity-60"
             >
-              Continue with {p.label}
+              {busy === p.label ? `Opening ${p.label}…` : `Continue with ${p.label}`}
             </button>
           ))}
         </div>
       ) : (
         <p className="text-sm text-muted">Sign-in is disabled.</p>
       )}
+      {error ? (
+        <p className="rounded-md bg-surface px-4 py-3 text-sm text-fg shadow-[var(--shadow-border)]">
+          {error}
+        </p>
+      ) : null}
+      <p className="text-xs text-muted">
+        If a tap does nothing, leave Private/Incognito and allow the page to
+        leave Safari for Google or X.
+      </p>
       <Link to="/" className="text-sm text-muted underline-offset-4 hover:underline">
         Back to HangTime
       </Link>
