@@ -4,12 +4,21 @@ import { useCurrentUser } from "@/lib/auth/use-current-user";
 import { getPlusOffer, unlockPlus, type PlusOffer } from "@/lib/plus/server";
 import { plusCheckoutUrl, STRIPE_TEST_MODE } from "@/lib/plus/stripe";
 
+function returnedFromStripe(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("checkout") === "success";
+}
+
 export function PlusPaywall({ onUnlocked }: { onUnlocked: () => void }) {
   const user = useCurrentUser();
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [fromStripe, setFromStripe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offer, setOffer] = useState<PlusOffer | null>(null);
+
+  useEffect(() => {
+    setFromStripe(returnedFromStripe());
+  }, []);
 
   useEffect(() => {
     void getPlusOffer()
@@ -18,6 +27,12 @@ export function PlusPaywall({ onUnlocked }: { onUnlocked: () => void }) {
         setOffer({ sold: 0, cap: 100, remaining: 100, lifetimeOpen: true }),
       );
   }, []);
+
+  useEffect(() => {
+    if (!fromStripe || !user?.id) return;
+    void confirmPaid();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromStripe, user?.id]);
 
   const lifetimeOpen = offer?.lifetimeOpen ?? true;
   const remaining = offer?.remaining ?? 100;
@@ -31,7 +46,6 @@ export function PlusPaywall({ onUnlocked }: { onUnlocked: () => void }) {
       setError("The founding lifetime offer is full.");
       return;
     }
-    setSent(true);
     window.location.href = plusCheckoutUrl(user.id, "lifetime");
   }
 
@@ -83,16 +97,14 @@ export function PlusPaywall({ onUnlocked }: { onUnlocked: () => void }) {
           Pay $10 lifetime with Stripe
         </Button>
       ) : null}
-      {lifetimeOpen && (sent || STRIPE_TEST_MODE) ? (
+      {lifetimeOpen && (fromStripe || STRIPE_TEST_MODE) ? (
         <Button type="button" className="mt-2 w-full" disabled={busy} onClick={() => void confirmPaid()}>
           {busy ? "Unlocking…" : "I already paid — open portal"}
         </Button>
       ) : null}
       {error ? <p className="mt-3 text-sm text-fg">{error}</p> : null}
       <p className="mt-4 text-xs text-muted">
-        {STRIPE_TEST_MODE
-          ? "Stripe is still in test mode. Real cards will not be charged until we switch this to live."
-          : "Stripe takes the $10 once. Founding members keep Plus for life."}
+        Stripe takes the $10 once. Founding members keep Plus for life.
       </p>
     </section>
   );
