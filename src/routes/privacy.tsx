@@ -152,17 +152,23 @@ function Privacy() {
             Contact
           </h2>
           <p>
-            HangTime / HangTime Plus — hangtimeplus.com. Privacy questions:
-            use the Google account you sign in with and reach us through the
-            site, or the support email listed on HangTime's Google sign-in
-            screen.
+            HangTime / HangTime Plus — hangtimeplus.com. Privacy questions
+            and deletion requests:{" "}
+            <a href="mailto:joey@velup.dev" className="text-primary hover:underline">
+              joey@velup.dev
+            </a>
+            . Use the same Google address you signed in with so we can find the
+            account.
           </p>
         </section>
       </div>
 
-      <p className="mt-10 text-sm text-muted">
+      <p className="mt-10 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted">
         <Link to="/" className="text-primary hover:underline">
           Back to HangTime
+        </Link>
+        <Link to="/terms" className="hover:underline">
+          Terms
         </Link>
       </p>
     </main>
