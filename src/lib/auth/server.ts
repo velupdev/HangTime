@@ -140,6 +140,8 @@ const trustedOrigins: string[] = [
   ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
   ...vercelAllowedHosts,
   "https://*.vercel.app",
+  "https://hangtimeplus.com",
+  "https://www.hangtimeplus.com",
   ...LOCAL_DEV_ORIGINS,
 ];
 

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { authEnabled, signIn } from "@/lib/auth/client";
+import { useState, type FormEvent } from "react";
+import { authClient, authEnabled, signIn } from "@/lib/auth/client";
 
 const LOGIN_PROVIDERS = [{ providerId: "google", label: "Google" }] as const;
 
@@ -9,6 +9,10 @@ export const Route = createFileRoute("/login")({ component: Login });
 function Login() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"in" | "up">("in");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
 
   async function onProvider(providerId: string, label: string) {
     setError(null);
@@ -20,6 +24,46 @@ function Login() {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
     }
   }
+
+  async function onEmail(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !password) {
+      setError("Enter email and password.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password needs at least 8 characters.");
+      return;
+    }
+    setBusy("email");
+    try {
+      if (mode === "up") {
+        const { error: signUpError } = await authClient.signUp.email({
+          email: trimmed,
+          password,
+          name: name.trim() || trimmed.split("@")[0] || "Athlete",
+          callbackURL: "/plus",
+        });
+        if (signUpError) throw new Error(signUpError.message ?? "Could not create account.");
+      } else {
+        const { error: signInError } = await authClient.signIn.email({
+          email: trimmed,
+          password,
+          callbackURL: "/plus",
+        });
+        if (signInError) throw new Error(signInError.message ?? "Could not sign in.");
+      }
+      window.location.assign("/plus");
+    } catch (err) {
+      setBusy(null);
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+    }
+  }
+
+  const inputClass =
+    "h-12 min-h-12 w-full rounded-md bg-surface px-3 text-sm text-fg shadow-[var(--shadow-border)] outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-primary/70";
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-4 py-10">
@@ -52,6 +96,69 @@ function Login() {
       ) : (
         <p className="text-sm text-muted">Sign-in is disabled.</p>
       )}
+
+      <p className="text-center text-xs font-semibold tracking-[0.18em] text-muted uppercase">
+        or email
+      </p>
+
+      <form className="flex flex-col gap-2" onSubmit={(e) => void onEmail(e)}>
+        {mode === "up" ? (
+          <input
+            className={inputClass}
+            name="name"
+            autoComplete="name"
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        ) : null}
+        <input
+          className={inputClass}
+          type="email"
+          name="email"
+          autoComplete="email"
+          inputMode="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <input
+          className={inputClass}
+          type="password"
+          name="password"
+          autoComplete={mode === "up" ? "new-password" : "current-password"}
+          placeholder={mode === "up" ? "Password (8+ characters)" : "Password"}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={8}
+        />
+        <button
+          type="submit"
+          disabled={busy !== null}
+          className="h-12 min-h-12 w-full touch-manipulation rounded-md bg-fg px-4 text-sm font-semibold text-bg hover:bg-fg/90 disabled:opacity-60"
+        >
+          {busy === "email"
+            ? mode === "up"
+              ? "Creating account…"
+              : "Signing in…"
+            : mode === "up"
+              ? "Create account"
+              : "Sign in with email"}
+        </button>
+        <button
+          type="button"
+          className="text-sm text-muted hover:text-fg"
+          onClick={() => {
+            setMode(mode === "in" ? "up" : "in");
+            setError(null);
+          }}
+        >
+          {mode === "in" ? "New here? Create an account" : "Already have an account? Sign in"}
+        </button>
+      </form>
+
       {error ? (
         <p className="rounded-md bg-surface px-4 py-3 text-sm text-fg shadow-[var(--shadow-border)]">
           {error}
