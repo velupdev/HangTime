@@ -4,6 +4,13 @@ import { authClient, authEnabled, signIn } from "@/lib/auth/client";
 
 const LOGIN_PROVIDERS = [{ providerId: "google", label: "Google" }] as const;
 
+function nextPath() {
+  if (typeof window === "undefined") return "/plus";
+  const raw = new URLSearchParams(window.location.search).get("callbackURL") ?? "/plus";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/plus";
+  return raw;
+}
+
 export const Route = createFileRoute("/login")({ component: Login });
 
 function Login() {
@@ -18,7 +25,7 @@ function Login() {
     setError(null);
     setBusy(label);
     try {
-      await signIn(providerId, { callbackURL: "/plus", errorCallbackURL: "/login" });
+      await signIn(providerId, { callbackURL: nextPath(), errorCallbackURL: "/login" });
     } catch (err) {
       setBusy(null);
       setError(err instanceof Error ? err.message : "Sign-in failed.");
@@ -44,18 +51,18 @@ function Login() {
           email: trimmed,
           password,
           name: name.trim() || trimmed.split("@")[0] || "Athlete",
-          callbackURL: "/plus",
+          callbackURL: nextPath(),
         });
         if (signUpError) throw new Error(signUpError.message ?? "Could not create account.");
       } else {
         const { error: signInError } = await authClient.signIn.email({
           email: trimmed,
           password,
-          callbackURL: "/plus",
+          callbackURL: nextPath(),
         });
         if (signInError) throw new Error(signInError.message ?? "Could not sign in.");
       }
-      window.location.assign("/plus");
+      window.location.assign(nextPath());
     } catch (err) {
       setBusy(null);
       setError(err instanceof Error ? err.message : "Sign-in failed.");

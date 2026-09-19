@@ -82,6 +82,11 @@ export const getAdminSnapshot = createServerFn({ method: "GET" })
       createdAt: asIso(row.created_at),
     }));
     const plus = users.filter((u) => u.plus).length;
+    const paidRows = await sql<{ n: number }>`
+      select count(*) as n from plus_members
+      where coalesce(source, 'paid') = 'paid'
+    `;
+    const paid = Number(paidRows[0]?.n ?? plus);
     return {
       users,
       totals: {
@@ -89,7 +94,7 @@ export const getAdminSnapshot = createServerFn({ method: "GET" })
         plus,
         players: users.reduce((n, u) => n + u.playerCount, 0),
         jumps: users.reduce((n, u) => n + u.jumpCount, 0),
-        lifetimeLeft: Math.max(0, LIFETIME_CAP - plus),
+        lifetimeLeft: Math.max(0, LIFETIME_CAP - paid),
       },
     };
   });

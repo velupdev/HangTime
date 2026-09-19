@@ -81,7 +81,7 @@ export function HangTimeApp() {
         setIsPlus(s.plus);
         setIsAdmin(s.admin);
         if (s.plus) {
-          return listPlayers().then((rows) => {
+          return listPlayers({ data: null }).then((rows) => {
             setPlayers(rows);
             setSavePlayerId((id) => id ?? rows[0]?.id ?? null);
           });

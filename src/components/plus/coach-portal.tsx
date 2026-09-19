@@ -3,33 +3,56 @@ import { Button } from "@/components/ui/button";
 import { formatHeight } from "@/lib/jump-math";
 import {
   addPlayer,
+  createCoachInvite,
   deletePlayer,
   listJumps,
   listPlayers,
+  listTeams,
   type JumpRow,
   type PlayerRow,
+  type TeamRow,
 } from "@/lib/plus/server";
 
 export function CoachPortal() {
+  const [teams, setTeams] = useState<TeamRow[]>([]);
+  const [teamId, setTeamId] = useState<number | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
   const [jumps, setJumps] = useState<JumpRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  async function refreshPlayers() {
-    const rows = await listPlayers();
+  async function refreshTeams() {
+    const rows = await listTeams();
+    setTeams(rows);
+    setTeamId((id) => id ?? rows[0]?.id ?? null);
+    return rows;
+  }
+
+  async function refreshPlayers(id: number | null) {
+    const rows = await listPlayers({ data: id });
     setPlayers(rows);
-    if (selected === null && rows[0]) setSelected(rows[0].id);
+    setSelected((cur) => {
+      if (cur && rows.some((p) => p.id === cur)) return cur;
+      return rows[0]?.id ?? null;
+    });
   }
 
   useEffect(() => {
-    void refreshPlayers().catch((err: unknown) => {
+    void refreshTeams().catch((err: unknown) => {
       setError(err instanceof Error ? err.message : "Could not load roster.");
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    void refreshPlayers(teamId).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : "Could not load players.");
+    });
+    setInviteUrl(null);
+  }, [teamId]);
 
   useEffect(() => {
     if (selected === null) {
@@ -46,7 +69,7 @@ export function CoachPortal() {
     setBusy(true);
     setError(null);
     try {
-      const row = await addPlayer({ data: name });
+      const row = await addPlayer({ data: { name, teamId } });
       setName("");
       if (row) {
         setPlayers((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
@@ -71,13 +94,53 @@ export function CoachPortal() {
     }
   }
 
+  async function onInvite() {
+    if (teamId === null) return;
+    setBusy(true);
+    setError(null);
+    setCopied(false);
+    try {
+      const created = await createCoachInvite({ data: teamId });
+      const url = `${window.location.origin}${created.path}`;
+      setInviteUrl(url);
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+      } catch {
+        /* clipboard may be blocked */
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create invite.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_1fr]">
       <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
         <h2 className="font-display text-xl font-extrabold tracking-wide">Players</h2>
         <p className="mt-1 text-sm text-muted">
-          Add yourself, or every athlete you coach.
+          Add yourself, or every athlete you coach. Invite another coach to this
+          same roster — it does not use a founding spot.
         </p>
+        {teams.length > 1 ? (
+          <label className="mt-3 block text-sm text-muted">
+            Roster
+            <select
+              value={teamId ?? ""}
+              onChange={(e) => setTeamId(Number(e.target.value))}
+              className="mt-1 h-11 min-h-11 w-full rounded-md bg-bg px-3 text-fg shadow-[var(--shadow-border)]"
+            >
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.owner ? " (yours)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <form onSubmit={(e) => void onAdd(e)} className="mt-3 flex flex-col gap-2">
           <input
             value={name}
@@ -89,6 +152,20 @@ export function CoachPortal() {
             Add player
           </Button>
         </form>
+        <Button
+          type="button"
+          className="mt-2 w-full"
+          disabled={busy || teamId === null}
+          onClick={() => void onInvite()}
+        >
+          Invite a coach
+        </Button>
+        {inviteUrl ? (
+          <p className="mt-2 break-all text-xs text-muted">
+            {copied ? "Copied. " : "Send this link: "}
+            {inviteUrl}
+          </p>
+        ) : null}
         <ul className="mt-4 space-y-1">
           {players.length === 0 ? (
             <li className="text-sm text-muted">No players yet.</li>
