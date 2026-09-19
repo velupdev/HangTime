@@ -216,7 +216,7 @@ export function HangTimeApp() {
       <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-10">
         <header>
           <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
-            Flight time
+            Get up
           </p>
           <h1 className="font-display text-5xl font-extrabold tracking-wide text-fg sm:text-6xl">
             HangTime
@@ -231,7 +231,7 @@ export function HangTimeApp() {
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
-            Flight time
+            Get up
           </p>
           <h1 className="font-display text-5xl font-extrabold tracking-wide text-fg sm:text-6xl">
             HangTime
