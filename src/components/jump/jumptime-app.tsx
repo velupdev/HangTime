@@ -16,7 +16,7 @@ import { computeJump, formatHeight } from "@/lib/jump-math";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { prepareVideoFile } from "@/lib/prepare-video";
-import { addJump, getPlusStatus, listPlayers, type PlayerRow } from "@/lib/plus/server";
+import { addJump, getPlusOffer, getPlusStatus, listPlayers, type PlayerRow } from "@/lib/plus/server";
 import { type VideoMeta } from "@/lib/video-meta";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +45,7 @@ export function HangTimeApp() {
   const { user, isPending: authPending } = useCurrentUserState();
   const [isPlus, setIsPlus] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [spotsLeft, setSpotsLeft] = useState<number | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [savePlayerId, setSavePlayerId] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
@@ -60,6 +61,12 @@ export function HangTimeApp() {
 
   useEffect(() => {
     setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    void getPlusOffer()
+      .then((o) => setSpotsLeft(o.remaining))
+      .catch(() => setSpotsLeft(null));
   }, []);
 
   useEffect(() => {
@@ -626,7 +633,11 @@ export function HangTimeApp() {
                 <Link to="/plus" className="font-semibold text-primary hover:underline">
                   HangTime Plus
                 </Link>{" "}
-                — first 100 get $10 lifetime to track this jump over time.
+                — first 100 get $10 lifetime
+                {spotsLeft !== null
+                  ? ` · ${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`
+                  : ""}
+                . Track this jump over time.
               </p>
             )}
           </>
@@ -656,7 +667,18 @@ export function HangTimeApp() {
             HangTime Plus
           </Link>
           {" — "}
-          First 100: $10 lifetime, then $10/year. Track results over time.
+          {spotsLeft === 0
+            ? "Founding lifetime is full. "
+            : `First 100: $10 lifetime${
+                spotsLeft !== null
+                  ? ` · ${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`
+                  : ""
+              }. `}
+          Track results over time.
+          {" · "}
+          <Link to="/privacy" className="hover:underline">
+            Privacy
+          </Link>
         </p>
       ) : null}
     </div>
