@@ -1,8 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { getAdminSnapshot, type AdminSnapshot } from "@/lib/admin/server";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  getAdminSnapshot,
+  grantCompPlus,
+  type AdminSnapshot,
+} from "@/lib/admin/server";
 import { RedirectToSignIn, SignInGate, UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
@@ -11,13 +16,17 @@ function AdminPage() {
   const [data, setData] = useState<AdminSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isPending || !user) return;
-    void getAdminSnapshot()
+  function refresh() {
+    return getAdminSnapshot()
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Could not load admin.");
       });
+  }
+
+  useEffect(() => {
+    if (isPending || !user) return;
+    void refresh();
   }, [isPending, user]);
 
   if (isPending) {
@@ -64,15 +73,45 @@ function AdminPage() {
         ) : data === null ? (
           <div className="h-40 animate-pulse rounded-lg bg-surface" />
         ) : (
-          <AdminBody data={data} />
+          <AdminBody data={data} onChanged={() => void refresh()} />
         )}
       </SignInGate>
     </div>
   );
 }
 
-function AdminBody({ data }: { data: AdminSnapshot }) {
-  const { totals, users } = data;
+function AdminBody({
+  data,
+  onChanged,
+}: {
+  data: AdminSnapshot;
+  onChanged: () => void;
+}) {
+  const { totals, users, pending } = data;
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function onGrant(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setNote(null);
+    try {
+      const result = await grantCompPlus({ data: email });
+      setEmail("");
+      setNote(
+        result.status === "active"
+          ? `${result.email} now has free HangTime Plus.`
+          : `${result.email} will get free Plus the first time they sign in.`,
+      );
+      onChanged();
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "Could not grant Plus.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -80,8 +119,40 @@ function AdminBody({ data }: { data: AdminSnapshot }) {
         <Stat label="Plus" value={totals.plus} />
         <Stat label="Lifetime left" value={totals.lifetimeLeft} />
         <Stat label="Players" value={totals.players} />
-        <Stat label="Jumps logged" value={totals.jumps} />
+        <Stat label="Jumps" value={totals.jumps} />
       </dl>
+
+      <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+        <h2 className="font-display text-xl font-extrabold tracking-wide">
+          Give Plus for free
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Comp a person their own roster. Does not use a founding $10 spot. They
+          sign in with this email (Google or password) and ads stay off.
+        </p>
+        <form
+          onSubmit={(e) => void onGrant(e)}
+          className="mt-3 flex flex-col gap-2 sm:flex-row"
+        >
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="coach@example.com"
+            className="h-11 min-h-11 flex-1 rounded-md bg-bg px-3 text-sm text-fg shadow-[var(--shadow-border)]"
+          />
+          <Button type="submit" variant="primary" disabled={busy || !email.trim()}>
+            Grant Plus
+          </Button>
+        </form>
+        {note ? <p className="mt-2 text-sm text-fg">{note}</p> : null}
+        {pending.length > 0 ? (
+          <p className="mt-3 text-sm text-muted">
+            Waiting to sign in: {pending.join(", ")}
+          </p>
+        ) : null}
+      </section>
+
       <section className="overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
         {users.length === 0 ? (
           <p className="px-5 py-8 text-sm text-muted">No signed-in users yet.</p>
@@ -104,7 +175,9 @@ function AdminBody({ data }: { data: AdminSnapshot }) {
                   <td className="px-4 py-3 text-muted">{u.email}</td>
                   <td className="px-4 py-3">
                     {u.plus ? (
-                      <span className="font-semibold text-primary">Plus</span>
+                      <span className="font-semibold text-primary">
+                        {u.plusSource === "comp" ? "Plus (free)" : "Plus"}
+                      </span>
                     ) : (
                       <span className="text-muted">Signed in</span>
                     )}
@@ -121,8 +194,8 @@ function AdminBody({ data }: { data: AdminSnapshot }) {
         )}
       </section>
       <p className="text-xs text-muted">
-        People who only measure a jump without signing in do not appear here.
-        Card payments also show in your Stripe dashboard (sandbox vs live).
+        Only joe@ace805.com and joey@velup.dev can open this page. People who
+        only measure a jump without signing in do not appear here.
       </p>
     </>
   );

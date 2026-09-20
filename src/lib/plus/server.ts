@@ -145,6 +145,29 @@ async function memberOf(
   return rows.length > 0;
 }
 
+async function applyPendingCompGrant(
+  sql: Sql,
+  userId: string,
+  email: string,
+): Promise<void> {
+  const grants = await sql<{ email: string }>`
+    select email from plus_grants where email = ${email} limit 1
+  `;
+  if (!grants.length) return;
+  const existing = await sql<{ user_id: string }>`
+    select user_id from plus_members where user_id = ${userId} limit 1
+  `;
+  if (!existing.length) {
+    await sql`
+      insert into plus_members (user_id, source)
+      values (${userId}, 'comp')
+      on conflict (user_id) do nothing
+    `;
+    await ensureOwnedTeam(sql, userId);
+  }
+  await sql`delete from plus_grants where email = ${email}`;
+}
+
 export const getPlusOffer = createServerFn({ method: "GET" }).handler(
   async () => readOffer(),
 );
@@ -153,15 +176,22 @@ export const getPlusStatus = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const sql = await getSql();
-    const rows = await sql<{ user_id: string; source: string | null }>`
-      select user_id, source from plus_members where user_id = ${context.userId} limit 1
-    `;
     const me = await sql<{ email: string | null }>`
       select email from "user" where id = ${context.userId} limit 1
     `;
     const offer = await readOffer();
-    if (rows.length > 0 && coalescePaid(rows[0].source)) {
-      await ensureOwnedTeam(sql, context.userId).catch(() => null);
+    const email = me[0]?.email?.trim().toLowerCase() ?? "";
+    if (email) {
+      await applyPendingCompGrant(sql, context.userId, email);
+    }
+    const rows = await sql<{ user_id: string; source: string | null }>`
+      select user_id, source from plus_members where user_id = ${context.userId} limit 1
+    `;
+    if (rows.length > 0) {
+      const teams = await teamsFor(sql, context.userId);
+      if (teams.length === 0) {
+        await ensureOwnedTeam(sql, context.userId).catch(() => null);
+      }
     }
     return {
       plus: rows.length > 0,
@@ -193,6 +223,9 @@ export const listTeams = createServerFn({ method: "GET" })
     `;
     if (plus.length && coalescePaid(plus[0].source)) {
       await ensureOwnedTeam(sql, context.userId);
+    } else if (plus.length) {
+      const mine = await teamsFor(sql, context.userId);
+      if (mine.length === 0) await ensureOwnedTeam(sql, context.userId);
     }
     return teamsFor(sql, context.userId);
   });
