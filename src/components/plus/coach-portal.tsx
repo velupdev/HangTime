@@ -154,7 +154,7 @@ export function CoachPortal() {
         <h2 className="font-display text-xl font-extrabold tracking-wide">Players</h2>
         <p className="mt-1 text-sm text-muted">
           Add yourself, or every athlete you coach. Invite another coach to this
-          same roster — it does not use a founding spot.
+          same roster.
         </p>
         {teams.length > 1 ? (
           <label className="mt-3 block text-sm text-muted">
