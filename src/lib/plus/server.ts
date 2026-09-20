@@ -427,3 +427,61 @@ export const addJump = createServerFn({ method: "POST" })
     `;
     return rows[0] ? mapJump(rows[0]) : null;
   });
+
+export const deleteJump = createServerFn({ method: "POST" })
+  .validator((id: number) => id)
+  .middleware([authMiddleware])
+  .handler(async ({ context, data: id }) => {
+    const sql = await getSql();
+    await sql`
+      delete from jumps j
+      using players p
+      where j.id = ${id}
+        and j.player_id = p.id
+        and (
+          exists (
+            select 1 from team_members m
+            where m.team_id = p.team_id and m.user_id = ${context.userId}
+          )
+          or p.user_id = ${context.userId}
+        )
+    `;
+    return { ok: true };
+  });
+
+export const listTeamProgress = createServerFn({ method: "POST" })
+  .validator((teamId: number | null) => teamId)
+  .middleware([authMiddleware])
+  .handler(async ({ context, data: teamId }) => {
+    const sql = await getSql();
+    if (teamId && !(await memberOf(sql, context.userId, teamId))) return [];
+    const rows = teamId
+      ? await sql<{ player_id: number; height_in: number; created_at: unknown }>`
+          select j.player_id, j.height_in, j.created_at
+          from jumps j
+          join players p on p.id = j.player_id
+          where p.team_id = ${teamId}
+          order by j.created_at asc
+        `
+      : await sql<{ player_id: number; height_in: number; created_at: unknown }>`
+          select j.player_id, j.height_in, j.created_at
+          from jumps j
+          join players p on p.id = j.player_id
+          where exists (
+            select 1 from team_members m
+            where m.team_id = p.team_id and m.user_id = ${context.userId}
+          )
+          or p.user_id = ${context.userId}
+          order by j.created_at asc
+        `;
+    const byPlayer = new Map<number, { heightIn: number; at: string }[]>();
+    for (const row of rows) {
+      const list = byPlayer.get(row.player_id) ?? [];
+      list.push({ heightIn: row.height_in, at: asIso(row.created_at) });
+      byPlayer.set(row.player_id, list);
+    }
+    return Array.from(byPlayer.entries()).map(([playerId, points]) => ({
+      playerId,
+      points,
+    }));
+  });

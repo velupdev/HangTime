@@ -1,17 +1,22 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { JumpChart } from "@/components/plus/jump-chart";
 import { formatHeight } from "@/lib/jump-math";
 import {
   addPlayer,
   createCoachInvite,
+  deleteJump,
   deletePlayer,
   listJumps,
   listPlayers,
+  listTeamProgress,
   listTeams,
   type JumpRow,
   type PlayerRow,
   type TeamRow,
 } from "@/lib/plus/server";
+
+type ProgressMap = Map<number, { heightIn: number; at: string }[]>;
 
 export function CoachPortal() {
   const [teams, setTeams] = useState<TeamRow[]>([]);
@@ -20,10 +25,20 @@ export function CoachPortal() {
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
   const [jumps, setJumps] = useState<JumpRow[]>([]);
+  const [progress, setProgress] = useState<ProgressMap>(new Map());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const chartPoints = useMemo(
+    () =>
+      [...jumps]
+        .slice()
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        .map((j) => ({ heightIn: j.height_in, at: j.created_at })),
+    [jumps],
+  );
 
   async function refreshTeams() {
     const rows = await listTeams();
@@ -41,6 +56,11 @@ export function CoachPortal() {
     });
   }
 
+  async function refreshProgress(id: number | null) {
+    const rows = await listTeamProgress({ data: id });
+    setProgress(new Map(rows.map((r) => [r.playerId, r.points])));
+  }
+
   useEffect(() => {
     void refreshTeams().catch((err: unknown) => {
       setError(err instanceof Error ? err.message : "Could not load roster.");
@@ -51,6 +71,7 @@ export function CoachPortal() {
     void refreshPlayers(teamId).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : "Could not load players.");
     });
+    void refreshProgress(teamId).catch(() => setProgress(new Map()));
     setInviteUrl(null);
   }, [teamId]);
 
@@ -82,13 +103,24 @@ export function CoachPortal() {
     }
   }
 
-  async function onDelete(id: number) {
+  async function onRemovePlayer(id: number) {
     setBusy(true);
     try {
       await deletePlayer({ data: id });
       const next = players.filter((p) => p.id !== id);
       setPlayers(next);
       setSelected(next[0]?.id ?? null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemoveJump(id: number) {
+    setBusy(true);
+    try {
+      await deleteJump({ data: id });
+      setJumps((prev) => prev.filter((j) => j.id !== id));
+      void refreshProgress(teamId);
     } finally {
       setBusy(false);
     }
@@ -170,19 +202,23 @@ export function CoachPortal() {
           {players.length === 0 ? (
             <li className="text-sm text-muted">No players yet.</li>
           ) : (
-            players.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelected(p.id)}
-                  className={`flex h-11 min-h-11 w-full items-center justify-between rounded-md px-3 text-left text-sm ${
-                    selected === p.id ? "bg-primary/15 text-primary" : "text-fg hover:bg-fg/8"
-                  }`}
-                >
-                  <span className="truncate">{p.name}</span>
-                </button>
-              </li>
-            ))
+            players.map((p) => {
+              const spark = progress.get(p.id) ?? [];
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(p.id)}
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
+                      selected === p.id ? "bg-primary/15 text-primary" : "text-fg hover:bg-fg/8"
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    {spark.length > 0 ? <JumpChart points={spark} compact /> : null}
+                  </button>
+                </li>
+              );
+            })
           )}
         </ul>
         {error ? <p className="mt-3 text-sm text-fg">{error}</p> : null}
@@ -205,9 +241,9 @@ export function CoachPortal() {
               <Button
                 type="button"
                 disabled={busy}
-                onClick={() => void onDelete(selected)}
+                onClick={() => void onRemovePlayer(selected)}
               >
-                Remove
+                Remove player
               </Button>
             </div>
             {jumps.length === 0 ? (
@@ -215,24 +251,37 @@ export function CoachPortal() {
                 No jumps yet. Measure on the home page, then save to this player.
               </p>
             ) : (
-              <ul className="mt-4 divide-y divide-border">
-                {jumps.map((j) => (
-                  <li key={j.id} className="flex items-baseline justify-between gap-3 py-3">
-                    <div>
-                      <p className="font-display text-2xl font-extrabold tabular-nums text-primary">
-                        {formatHeight(j.height_in / 39.3700787, "in")}
-                      </p>
-                      <p className="text-sm text-muted">
-                        {j.flight_s.toFixed(3)} s · {j.fps} fps
-                        {j.notes ? ` · ${j.notes}` : ""}
-                      </p>
-                    </div>
-                    <p className="text-xs tabular-nums text-muted">
-                      {jumpDay(j.created_at)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <JumpChart points={chartPoints} />
+                <ul className="mt-4 divide-y divide-border">
+                  {jumps.map((j) => (
+                    <li
+                      key={j.id}
+                      className="flex items-center justify-between gap-3 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-display text-2xl font-extrabold tabular-nums text-primary">
+                          {formatHeight(j.height_in / 39.3700787, "in")}
+                        </p>
+                        <p className="text-sm text-muted">
+                          {j.flight_s.toFixed(3)} s · {j.fps} fps
+                          {j.notes ? ` · ${j.notes}` : ""}
+                          {" · "}
+                          {jumpDay(j.created_at)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void onRemoveJump(j.id)}
+                      >
+                        Remove jump
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </>
         )}
