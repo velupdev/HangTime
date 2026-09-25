@@ -145,3 +145,51 @@ export const grantCompPlus = createServerFn({ method: "POST" })
     `;
     return { status: "pending" as const, email };
   });
+
+export const revokeCompPlus = createServerFn({ method: "POST" })
+  .validator((userId: string) => userId.trim())
+  .middleware([authMiddleware])
+  .handler(async ({ context, data: userId }) => {
+    await requireAdmin(context.userId);
+    if (!userId) throw new Error("Missing user.");
+    const sql = await getSql();
+    const member = await sql<{ source: string | null; email: string }>`
+      select p.source, u.email
+      from plus_members p
+      join "user" u on u.id = p.user_id
+      where p.user_id = ${userId}
+      limit 1
+    `;
+    if (!member[0]) throw new Error("That person does not have Plus.");
+    if ((member[0].source ?? "paid") !== "comp") {
+      throw new Error("Paid Plus stays. Refund in Stripe if you ever need to undo a payment.");
+    }
+    await sql`
+      delete from plus_members
+      where user_id = ${userId} and source = 'comp'
+    `;
+    await sql`
+      delete from team_members m
+      using teams t
+      where m.team_id = t.id
+        and m.user_id = ${userId}
+        and t.owner_user_id <> ${userId}
+    `;
+    const email = member[0].email?.trim().toLowerCase();
+    if (email) {
+      await sql`delete from plus_grants where email = ${email}`;
+    }
+    return { ok: true as const, email };
+  });
+
+export const revokePendingGrant = createServerFn({ method: "POST" })
+  .validator((email: string) => email.trim().toLowerCase())
+  .middleware([authMiddleware])
+  .handler(async ({ context, data: email }) => {
+    await requireAdmin(context.userId);
+    if (!email.includes("@")) throw new Error("Enter a valid email.");
+    const sql = await getSql();
+    await sql`delete from plus_grants where email = ${email}`;
+    return { ok: true as const, email };
+  });
+

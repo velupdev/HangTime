@@ -3,6 +3,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   getAdminSnapshot,
   grantCompPlus,
+  revokeCompPlus,
+  revokePendingGrant,
   type AdminSnapshot,
 } from "@/lib/admin/server";
 import { RedirectToSignIn, SignInGate, UserButton } from "@/lib/auth/gates";
@@ -112,6 +114,36 @@ function AdminBody({
     }
   }
 
+  async function onRevokePending(address: string) {
+    if (!window.confirm(`Remove the free Plus invite for ${address}?`)) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await revokePendingGrant({ data: address });
+      setNote(`${address} will not get free Plus.`);
+      onChanged();
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "Could not remove that invite.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRevokeComp(userId: string, address: string) {
+    if (!window.confirm(`Remove free Plus for ${address}? Their jumps stay saved.`)) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await revokeCompPlus({ data: userId });
+      setNote(`${address} is back to the free measure page.`);
+      onChanged();
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "Could not remove Plus.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -147,9 +179,23 @@ function AdminBody({
         </form>
         {note ? <p className="mt-2 text-sm text-fg">{note}</p> : null}
         {pending.length > 0 ? (
-          <p className="mt-3 text-sm text-muted">
-            Waiting to sign in: {pending.join(", ")}
-          </p>
+          <ul className="mt-3 space-y-2">
+            {pending.map((address) => (
+              <li key={address} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate text-muted">
+                  Waiting to sign in: {address}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void onRevokePending(address)}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
         ) : null}
       </section>
 
@@ -166,6 +212,7 @@ function AdminBody({
                 <th className="px-4 py-3 font-semibold">Players</th>
                 <th className="px-4 py-3 font-semibold">Jumps</th>
                 <th className="px-4 py-3 font-semibold">Joined</th>
+                <th className="px-4 py-3 font-semibold" />
               </tr>
             </thead>
             <tbody>
@@ -186,6 +233,18 @@ function AdminBody({
                   <td className="px-4 py-3 tabular-nums">{u.jumpCount}</td>
                   <td className="px-4 py-3 tabular-nums text-muted">
                     {u.createdAt.slice(0, 10)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {u.plus && u.plusSource === "comp" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void onRevokeComp(u.id, u.email)}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
                   </td>
                 </tr>
               ))}
