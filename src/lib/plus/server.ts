@@ -166,6 +166,7 @@ async function applyPendingCompGrant(
     await ensureOwnedTeam(sql, userId);
   }
   await sql`delete from plus_grants where email = ${email}`;
+  await sql`delete from plus_revocations where user_id = ${userId}`;
 }
 
 export const getPlusOffer = createServerFn({ method: "GET" }).handler(
@@ -210,6 +211,7 @@ export const unlockPlus = createServerFn({ method: "POST" })
       on conflict (user_id) do update
         set source = 'paid'
     `;
+    await sql`delete from plus_revocations where user_id = ${context.userId}`;
     await ensureOwnedTeam(sql, context.userId);
     return { plus: true };
   });

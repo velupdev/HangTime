@@ -10,6 +10,7 @@ export type AdminUserRow = {
   email: string;
   plus: boolean;
   plusSource: string | null;
+  revoked: boolean;
   playerCount: number;
   jumpCount: number;
   createdAt: string;
@@ -64,6 +65,7 @@ export const getAdminSnapshot = createServerFn({ method: "GET" })
       email: string;
       plus: boolean | string | number;
       plus_source: string | null;
+      revoked: boolean | string | number;
       player_count: number | string;
       jump_count: number | string;
       created_at: unknown;
@@ -74,6 +76,7 @@ export const getAdminSnapshot = createServerFn({ method: "GET" })
         u.email,
         exists(select 1 from plus_members p where p.user_id = u.id) as plus,
         (select p.source from plus_members p where p.user_id = u.id limit 1) as plus_source,
+        exists(select 1 from plus_revocations r where r.user_id = u.id) as revoked,
         (select count(*) from players pl where pl.user_id = u.id) as player_count,
         (select count(*) from jumps j where j.user_id = u.id) as jump_count,
         u."createdAt" as created_at
@@ -86,6 +89,7 @@ export const getAdminSnapshot = createServerFn({ method: "GET" })
       email: row.email,
       plus: row.plus === true || row.plus === "t" || row.plus === 1,
       plusSource: row.plus_source,
+      revoked: row.revoked === true || row.revoked === "t" || row.revoked === 1,
       playerCount: Number(row.player_count) || 0,
       jumpCount: Number(row.jump_count) || 0,
       createdAt: asIso(row.created_at),
@@ -136,6 +140,7 @@ export const grantCompPlus = createServerFn({ method: "POST" })
         `;
       }
       await sql`delete from plus_grants where email = ${email}`;
+      await sql`delete from plus_revocations where user_id = ${existing[0].id}`;
       return { status: "active" as const, email };
     }
     await sql`
@@ -164,9 +169,16 @@ export const revokeCompPlus = createServerFn({ method: "POST" })
     if ((member[0].source ?? "paid") !== "comp") {
       throw new Error("Paid Plus stays. Refund in Stripe if you ever need to undo a payment.");
     }
+    const email = member[0].email?.trim().toLowerCase() ?? "";
     await sql`
       delete from plus_members
       where user_id = ${userId} and source = 'comp'
+    `;
+    await sql`
+      insert into plus_revocations (user_id, email)
+      values (${userId}, ${email || null})
+      on conflict (user_id) do update
+        set email = excluded.email, revoked_at = now()
     `;
     await sql`
       delete from team_members m
@@ -175,7 +187,6 @@ export const revokeCompPlus = createServerFn({ method: "POST" })
         and m.user_id = ${userId}
         and t.owner_user_id <> ${userId}
     `;
-    const email = member[0].email?.trim().toLowerCase();
     if (email) {
       await sql`delete from plus_grants where email = ${email}`;
     }

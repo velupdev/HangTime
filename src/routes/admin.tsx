@@ -225,6 +225,8 @@ function AdminBody({
                       <span className="font-semibold text-primary">
                         {u.plusSource === "comp" ? "Plus (free)" : "Plus"}
                       </span>
+                    ) : u.revoked ? (
+                      <span className="text-muted">Free access removed</span>
                     ) : (
                       <span className="text-muted">Signed in</span>
                     )}
