@@ -317,11 +317,16 @@ export function HangTimeApp() {
                 Watch it once
               </span>
               <span className="mt-1 block text-sm text-muted">
-                Film, upload, mark takeoff and landing. About two minutes.
+                Film, upload, mark takeoff and landing. Watch in full screen.
               </span>
             </span>
           </button>
         )}
+        {showHowTo ? (
+          <p className="border-t border-border px-4 py-3 text-sm text-muted">
+            Watch in full screen.
+          </p>
+        ) : null}
       </section>
 
       <ol className="grid gap-2 sm:grid-cols-3">
