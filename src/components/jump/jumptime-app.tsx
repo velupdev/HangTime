@@ -26,6 +26,7 @@ const FILE_ACCEPT = "video/*,.mov,.mp4,.m4v,.webm,.mkv,.3gp";
 
 export function HangTimeApp() {
   const [hydrated, setHydrated] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [ownsUrl, setOwnsUrl] = useState(false);
@@ -279,8 +280,56 @@ export function HangTimeApp() {
         </nav>
       </header>
 
+      <section className="overflow-hidden rounded-lg bg-surface shadow-[var(--shadow-border)]">
+        {showHowTo ? (
+          <div className="relative aspect-video w-full bg-bg">
+            <iframe
+              className="absolute inset-0 h-full w-full"
+              src="https://www.youtube-nocookie.com/embed/iRG5s9Tn0Yo?rel=0&autoplay=1"
+              title="HangTime Plus — How to use"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowHowTo(true)}
+            className="flex w-full items-center gap-4 p-3 text-left sm:p-4"
+          >
+            <span className="relative block h-20 w-36 shrink-0 overflow-hidden rounded-md bg-bg sm:h-24 sm:w-44">
+              <img
+                src="https://i.ytimg.com/vi/iRG5s9Tn0Yo/hqdefault.jpg"
+                alt=""
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-bg/35">
+                <span className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-fg">
+                  <Play className="size-5" />
+                </span>
+              </span>
+            </span>
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold tracking-[0.18em] text-primary uppercase">
+                How to
+              </span>
+              <span className="mt-1 block font-display text-2xl font-extrabold tracking-wide text-fg">
+                Watch it once
+              </span>
+              <span className="mt-1 block text-sm text-muted">
+                Film, upload, mark takeoff and landing. About two minutes.
+              </span>
+            </span>
+          </button>
+        )}
+      </section>
+
       <ol className="grid gap-2 sm:grid-cols-3">
-        <Step n="1" title="Film on any phone">
+        <Step
+          n="1"
+          title="Film on any phone"
+          hint="Slo-mo, feet in the frame. 240 fps is best."
+        >
           <p>
             Use the highest slo-mo your Camera app offers. 240 fps is best, 120
             is great. Regular 1080p 30 or 60 fps still works. Prop the phone
@@ -325,14 +374,22 @@ export function HangTimeApp() {
             slow, export at 1x / original speed.
           </p>
         </Step>
-        <Step n="2" title="Drop it here">
+        <Step
+          n="2"
+          title="Drop it here"
+          hint="Drop the clip on this page, or tap the box."
+        >
           <p>
             Drop the clip on this page or tap the player to choose a file. mp4
             and mov from any recent phone work. If the browser needs a moment,
             we are converting it.
           </p>
         </Step>
-        <Step n="3" title="Map your jump">
+        <Step
+          n="3"
+          title="Map your jump"
+          hint="Last frame of contact, then the first frame they land."
+        >
           <p>
             Scrub to the last frame a toe still touches the floor — that is
             takeoff. Scrub to the first frame a foot touches again — that is
@@ -688,10 +745,12 @@ export function HangTimeApp() {
 function Step({
   n,
   title,
+  hint,
   children,
 }: {
   n: string;
   title: string;
+  hint: string;
   children: ReactNode;
 }) {
   return (
@@ -699,8 +758,11 @@ function Step({
       <details className="rounded-lg bg-surface shadow-[var(--shadow-border)]">
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
           <span className="font-display text-2xl font-extrabold text-primary">{n}</span>
-          <span className="flex-1 text-sm font-semibold text-fg">{title}</span>
-          <span className="text-xs font-medium text-muted">Learn more</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-fg">{title}</span>
+            <span className="mt-0.5 block text-xs font-normal text-muted">{hint}</span>
+          </span>
+          <span className="shrink-0 text-xs font-medium text-muted">More</span>
         </summary>
         <div className="border-t border-border px-4 py-3 text-sm text-muted">
           {children}
