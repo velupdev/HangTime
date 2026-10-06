@@ -89,7 +89,7 @@ function AdminBody({
   data: AdminSnapshot;
   onChanged: () => void;
 }) {
-  const { totals, users, pending } = data;
+  const { totals, users, pending, usage } = data;
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -153,6 +153,27 @@ function AdminBody({
         <Stat label="Players" value={totals.players} />
         <Stat label="Jumps" value={totals.jumps} />
       </dl>
+
+      <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+        <h2 className="font-display text-xl font-extrabold tracking-wide">Usage</h2>
+        <p className="mt-1 text-sm text-muted">
+          Counts start the day this went live. A visit is someone opening the
+          free measure page. Active is anyone who opened it, uploaded a clip, or
+          measured a jump in the last 7 days. Not a live “online right now” number.
+        </p>
+        <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Stat label="Visits, 7 days" value={usage.visits7} />
+          <Stat label="Visits, 30 days" value={usage.visits30} />
+          <Stat label="Unique, 30 days" value={usage.visitors30} />
+          <Stat label="Active, 7 days" value={usage.active7} />
+          <Stat label="Videos, 7 days" value={usage.videos7} />
+          <Stat label="Measured, 7 days" value={usage.measured7} />
+        </dl>
+        <p className="mt-3 text-xs text-muted">
+          All time: {usage.visitsAll} visits, {usage.videosAll} videos opened,{" "}
+          {usage.measuredAll} jumps measured. Saved jumps are in the row above.
+        </p>
+      </section>
 
       <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
         <h2 className="font-display text-xl font-extrabold tracking-wide">

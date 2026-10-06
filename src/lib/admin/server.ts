@@ -3,6 +3,7 @@ import { isAdminEmail } from "@/lib/admin/emails";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { LIFETIME_CAP } from "@/lib/plus/server";
+import { readUsageTotals, type UsageTotals } from "@/lib/usage";
 
 export type AdminUserRow = {
   id: string;
@@ -19,6 +20,7 @@ export type AdminUserRow = {
 export type AdminSnapshot = {
   users: AdminUserRow[];
   pending: string[];
+  usage: UsageTotals;
   totals: {
     signedIn: number;
     plus: number;
@@ -103,9 +105,11 @@ export const getAdminSnapshot = createServerFn({ method: "GET" })
       where coalesce(source, 'paid') = 'paid'
     `;
     const paid = Number(paidRows[0]?.n ?? plus);
+    const usage = await readUsageTotals();
     return {
       users,
       pending: pendingRows.map((r) => r.email),
+      usage,
       totals: {
         signedIn: users.length,
         plus,

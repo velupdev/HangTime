@@ -22,7 +22,7 @@ function Privacy() {
       <h1 className="font-display mt-1 text-4xl font-extrabold tracking-wide sm:text-5xl">
         Privacy
       </h1>
-      <p className="mt-2 text-sm text-muted">Last updated September 18, 2026</p>
+      <p className="mt-2 text-sm text-muted">Last updated October 6, 2026</p>
 
       <div className="mt-8 space-y-6 text-sm leading-relaxed text-fg">
         <p>
@@ -49,7 +49,10 @@ function Privacy() {
           <p>
             You can measure a vertical without creating an account. We do not
             store your name, email, or jump results unless you sign in to
-            HangTime Plus and save them.
+            HangTime Plus and save them. We do count anonymous use of the free
+            page: that it was opened, that a video was opened in the browser,
+            and that a jump was measured. Those counts are not tied to your
+            name or email.
           </p>
         </section>
 

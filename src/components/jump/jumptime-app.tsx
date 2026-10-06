@@ -18,7 +18,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { prepareVideoFile } from "@/lib/prepare-video";
 import { addJump, getPlusOffer, getPlusStatus, listPlayers, type PlayerRow } from "@/lib/plus/server";
 import { type VideoMeta } from "@/lib/video-meta";
-import { cn } from "@/lib/utils";
+import { trackUsage } from "@/lib/usage";
 
 type Units = "in" | "cm";
 
@@ -28,6 +28,7 @@ export function HangTimeApp() {
   const [hydrated, setHydrated] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const measuredSent = useRef(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [ownsUrl, setOwnsUrl] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -125,6 +126,7 @@ export function HangTimeApp() {
     setFileName(name);
     setTakeoff(null);
     setLanding(null);
+    measuredSent.current = false;
     setFrame(0);
     setPlaying(false);
     setError(null);
@@ -143,6 +145,7 @@ export function HangTimeApp() {
       });
       loadUrl(prepared.url, file.name, true);
       if (prepared.meta) applyMeta(prepared.meta);
+      trackUsage("video_upload");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open that video.");
     } finally {
@@ -218,6 +221,17 @@ export function HangTimeApp() {
       </select>
     </label>
   );
+
+  useEffect(() => {
+    if (!hydrated) return;
+    trackUsage("page_view");
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!result || measuredSent.current) return;
+    measuredSent.current = true;
+    trackUsage("jump_measured");
+  }, [result]);
 
   if (!hydrated) {
     return (
