@@ -149,10 +149,10 @@ export function CoachPortal() {
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_1fr]">
-      <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-        <h2 className="font-display text-xl font-extrabold tracking-wide">Players</h2>
-        <p className="mt-1 text-sm text-muted">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_1fr] lg:items-start">
+      <section className="flex max-h-[calc(100dvh-6.5rem)] flex-col overflow-hidden rounded-lg bg-surface p-4 shadow-[var(--shadow-border)] lg:sticky lg:top-4">
+        <h2 className="shrink-0 font-display text-xl font-extrabold tracking-wide">Players</h2>
+        <p className="mt-1 shrink-0 text-sm text-muted">
           Add yourself, or every athlete you coach. Invite another coach to this
           same roster.
         </p>
@@ -173,7 +173,7 @@ export function CoachPortal() {
             </select>
           </label>
         ) : null}
-        <form onSubmit={(e) => void onAdd(e)} className="mt-3 flex flex-col gap-2">
+        <form onSubmit={(e) => void onAdd(e)} className="mt-3 flex shrink-0 flex-col gap-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -186,7 +186,7 @@ export function CoachPortal() {
         </form>
         <Button
           type="button"
-          className="mt-2 w-full"
+          className="mt-2 w-full shrink-0"
           disabled={busy || teamId === null}
           onClick={() => void onInvite()}
         >
@@ -198,7 +198,7 @@ export function CoachPortal() {
             {inviteUrl}
           </p>
         ) : null}
-        <ul className="mt-4 space-y-1">
+        <ul className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
           {players.length === 0 ? (
             <li className="text-sm text-muted">No players yet.</li>
           ) : (
@@ -221,7 +221,7 @@ export function CoachPortal() {
             })
           )}
         </ul>
-        {error ? <p className="mt-3 text-sm text-fg">{error}</p> : null}
+        {error ? <p className="mt-3 shrink-0 text-sm text-fg">{error}</p> : null}
       </section>
 
       <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
