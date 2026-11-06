@@ -685,7 +685,18 @@ export function HangTimeApp() {
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-border p-4">
+        {recording ? (
+          <div className="border-t border-border p-4">
+            <Button type="button" variant="primary" className="w-full" onClick={stopRecording}>
+              Stop and measure
+            </Button>
+            <p className="mt-2 text-center text-sm text-muted">
+              Recording{liveFps ? ` · camera ${liveFps} fps` : ""}
+            </p>
+          </div>
+        ) : null}
+
+        <div className={cn("flex flex-col gap-3 border-t border-border p-4", recording ? "hidden" : "")}>
           <div className="flex items-center justify-between gap-3 text-sm">
             <p className="truncate text-muted">
               {recording
@@ -800,11 +811,6 @@ export function HangTimeApp() {
               Reset marks
             </Button>
           </div>
-          {recording ? (
-            <Button type="button" variant="primary" onClick={stopRecording}>
-              Stop and measure
-            </Button>
-          ) : null}
           {videoUrl ? (
             <Button type="button" onClick={clearClip}>
               <RotateCcw className="size-4" />
