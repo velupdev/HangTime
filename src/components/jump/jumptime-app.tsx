@@ -59,7 +59,6 @@ export function HangTimeApp() {
   const [saved, setSaved] = useState(false);
   const [recording, setRecording] = useState(false);
   const [liveFps, setLiveFps] = useState<number | null>(null);
-  const [rateChoice, setRateChoice] = useState<30 | 60 | 120>(60);
 
   const playbackFps = fileFps;
   const maxFrame = Math.max(0, Math.round(duration * playbackFps) - 1);
@@ -220,17 +219,24 @@ export function HangTimeApp() {
           facingMode: { ideal: "environment" },
           width: { ideal: 1280 },
           height: { ideal: 720 },
-          frameRate: { ideal: rateChoice },
+          frameRate: { ideal: 240 },
         },
       });
     } catch {
-      setError("Camera didn't open. Allow camera access, or upload a clip.");
-      return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: "environment" } },
+        });
+      } catch {
+        setError("Camera didn't open. Allow camera access, or upload a clip.");
+        return;
+      }
     }
     streamRef.current = stream;
     const fps = Math.round(stream.getVideoTracks()[0]?.getSettings().frameRate || 0);
     setLiveFps(fps || null);
-    recordedFps.current = fps || rateChoice;
+    recordedFps.current = fps || null;
     const mime = ["video/mp4", "video/webm;codecs=vp8", "video/webm"].find(
       (type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type),
     );
@@ -589,25 +595,10 @@ export function HangTimeApp() {
               className="mx-auto max-h-80 w-full bg-bg object-contain sm:max-h-96"
             />
           ) : (
-            <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-              <div className="flex gap-2">
-                {([30, 60, 120] as const).map((rate) => (
-                  <button
-                    key={rate}
-                    type="button"
-                    onClick={() => setRateChoice(rate)}
-                    className={cn(
-                      "h-9 rounded-full px-3 text-xs font-semibold",
-                      rateChoice === rate ? "bg-primary text-primary-fg" : "bg-surface text-muted",
-                    )}
-                  >
-                    {rate === 120 ? "Highest" : `${rate} fps`}
-                  </button>
-                ))}
-              </div>
+            <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
               <Button type="button" variant="primary" onClick={() => void startRecording()}>
                 <Smartphone className="size-4" />
-                Record here
+                Record
               </Button>
               <label className="cursor-pointer text-sm font-semibold text-primary">
                 <Upload className="mr-1 inline size-4" />
@@ -623,11 +614,6 @@ export function HangTimeApp() {
                   }}
                 />
               </label>
-              <p className="max-w-sm text-xs text-muted">
-                Record here stays on this page. Browsers usually allow 30 or 60
-                fps, not 240. For slo-mo, film in the Camera app, then upload
-                that file.
-              </p>
             </div>
           )}
           {busy ? (
