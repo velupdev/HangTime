@@ -7,6 +7,7 @@ import { getSql, type Sql } from "@/lib/db";
 export type PlayerRow = {
   id: number;
   name: string;
+  group_name: string | null;
   created_at: string;
 };
 
@@ -49,7 +50,8 @@ function asIso(value: unknown): string {
 }
 
 function mapPlayer(row: PlayerRow): PlayerRow {
-  return { ...row, created_at: asIso(row.created_at) };
+  const group = typeof row.group_name === "string" ? row.group_name.trim() : "";
+  return { ...row, group_name: group || null, created_at: asIso(row.created_at) };
 }
 
 function mapJump(row: JumpRow): JumpRow {
@@ -296,30 +298,31 @@ export const listPlayers = createServerFn({ method: "POST" })
     if (teamId && !(await memberOf(sql, context.userId, teamId))) return [];
     const rows = teamId
       ? await sql<PlayerRow>`
-          select id, name, created_at from players
+          select id, name, group_name, created_at from players
           where team_id = ${teamId}
-          order by name
+          order by group_name nulls last, name
         `
       : await sql<PlayerRow>`
-          select p.id, p.name, p.created_at
+          select p.id, p.name, p.group_name, p.created_at
           from players p
           join team_members m on m.team_id = p.team_id
           where m.user_id = ${context.userId}
-          order by p.name
+          order by p.group_name nulls last, p.name
         `;
     if (rows.length) return rows.map(mapPlayer);
     const legacy = await sql<PlayerRow>`
-      select id, name, created_at from players
+      select id, name, group_name, created_at from players
       where user_id = ${context.userId}
-      order by name
+      order by group_name nulls last, name
     `;
     return legacy.map(mapPlayer);
   });
 
 export const addPlayer = createServerFn({ method: "POST" })
-  .validator((input: { name: string; teamId: number | null }) => ({
+  .validator((input: { name: string; teamId: number | null; groupName?: string }) => ({
     name: input.name.trim().slice(0, 80),
     teamId: input.teamId,
+    groupName: (input.groupName ?? "").trim().slice(0, 40),
   }))
   .middleware([authMiddleware])
   .handler(async ({ context, data }) => {
@@ -341,10 +344,11 @@ export const addPlayer = createServerFn({ method: "POST" })
       }
     }
     if (!teamId) throw new Error("No roster to add to.");
+    const group = data.groupName || null;
     const rows = await sql<PlayerRow>`
-      insert into players (user_id, team_id, name)
-      values (${context.userId}, ${teamId}, ${data.name})
-      returning id, name, created_at
+      insert into players (user_id, team_id, name, group_name)
+      values (${context.userId}, ${teamId}, ${data.name}, ${group})
+      returning id, name, group_name, created_at
     `;
     return rows[0] ? mapPlayer(rows[0]) : null;
   });
@@ -366,6 +370,38 @@ export const deletePlayer = createServerFn({ method: "POST" })
       where id = ${id} and user_id = ${context.userId} and team_id is null
     `;
     return { ok: true };
+  });
+
+export const updatePlayer = createServerFn({ method: "POST" })
+  .validator((input: { id: number; name: string; groupName?: string }) => ({
+    id: input.id,
+    name: input.name.trim().slice(0, 80),
+    groupName: (input.groupName ?? "").trim().slice(0, 40),
+  }))
+  .middleware([authMiddleware])
+  .handler(async ({ context, data }) => {
+    if (!data.name) throw new Error("Name is required.");
+    const sql = await getSql();
+    const group = data.groupName || null;
+    let rows = await sql<PlayerRow>`
+      update players p
+      set name = ${data.name}, group_name = ${group}
+      from team_members m
+      where p.id = ${data.id}
+        and p.team_id = m.team_id
+        and m.user_id = ${context.userId}
+      returning p.id, p.name, p.group_name, p.created_at
+    `;
+    if (!rows.length) {
+      rows = await sql<PlayerRow>`
+        update players
+        set name = ${data.name}, group_name = ${group}
+        where id = ${data.id} and user_id = ${context.userId} and team_id is null
+        returning id, name, group_name, created_at
+      `;
+    }
+    if (!rows[0]) throw new Error("Could not update that player.");
+    return mapPlayer(rows[0]);
   });
 
 export const listJumps = createServerFn({ method: "POST" })

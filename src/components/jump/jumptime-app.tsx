@@ -29,6 +29,11 @@ export function HangTimeApp() {
   const [hydrated, setHydrated] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const liveRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const discardRef = useRef(false);
+  const recordedFps = useRef<number | null>(null);
   const measuredSent = useRef(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [ownsUrl, setOwnsUrl] = useState(false);
@@ -52,6 +57,9 @@ export function HangTimeApp() {
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [savePlayerId, setSavePlayerId] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [liveFps, setLiveFps] = useState<number | null>(null);
+  const [rateChoice, setRateChoice] = useState<30 | 60 | 120>(60);
 
   const playbackFps = fileFps;
   const maxFrame = Math.max(0, Math.round(duration * playbackFps) - 1);
@@ -146,6 +154,12 @@ export function HangTimeApp() {
       });
       loadUrl(prepared.url, file.name, true);
       if (prepared.meta) applyMeta(prepared.meta);
+      const cam = recordedFps.current;
+      recordedFps.current = null;
+      if (cam && cam >= 24) {
+        setCaptureFps(cam);
+        setFileFps(cam);
+      }
       trackUsage("video_upload");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open that video.");
@@ -160,6 +174,113 @@ export function HangTimeApp() {
     setLanding(null);
     seekFrame(0);
   }
+
+  function stopTracks() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }
+
+  function clearClip() {
+    discardRef.current = true;
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+    else {
+      stopTracks();
+      discardRef.current = false;
+    }
+    setRecording(false);
+    setLiveFps(null);
+    setVideoUrl((prev) => {
+      if (prev && ownsUrl) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setOwnsUrl(false);
+    setFileName(null);
+    setTakeoff(null);
+    setLanding(null);
+    setFrame(0);
+    setDuration(0);
+    setPlaying(false);
+    setSaved(false);
+    setError(null);
+    measuredSent.current = false;
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("This browser can't open the camera here. Upload a clip instead.");
+      return;
+    }
+    setError(null);
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: rateChoice },
+        },
+      });
+    } catch {
+      setError("Camera didn't open. Allow camera access, or upload a clip.");
+      return;
+    }
+    streamRef.current = stream;
+    const fps = Math.round(stream.getVideoTracks()[0]?.getSettings().frameRate || 0);
+    setLiveFps(fps || null);
+    recordedFps.current = fps || rateChoice;
+    const mime = ["video/mp4", "video/webm;codecs=vp8", "video/webm"].find(
+      (type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type),
+    );
+    let rec: MediaRecorder;
+    try {
+      rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    } catch {
+      stopTracks();
+      setError("This browser can't record here. Upload a clip instead.");
+      return;
+    }
+    recorderRef.current = rec;
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    rec.onstop = () => {
+      const discard = discardRef.current;
+      discardRef.current = false;
+      const type = rec.mimeType || mime || "video/mp4";
+      stopTracks();
+      setRecording(false);
+      if (discard) return;
+      const ext = type.includes("mp4") ? "mp4" : "webm";
+      void onFile(new File(chunks, `hangtime-${Date.now()}.${ext}`, { type }));
+    };
+    rec.start(1000);
+    setRecording(true);
+  }
+
+  function stopRecording() {
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+  }
+
+  useEffect(() => {
+    return () => {
+      discardRef.current = true;
+      recorderRef.current?.state !== "inactive" && recorderRef.current?.stop();
+      stopTracks();
+    };
+  }, []);
+
+  useEffect(() => {
+    const video = liveRef.current;
+    const stream = streamRef.current;
+    if (!recording || !video || !stream) return;
+    video.srcObject = stream;
+    void video.play().catch(() => undefined);
+  }, [recording]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -459,25 +580,55 @@ export function HangTimeApp() {
               muted
               className="mx-auto max-h-80 w-full bg-bg object-contain sm:max-h-96"
             />
+          ) : recording ? (
+            <video
+              ref={liveRef}
+              playsInline
+              muted
+              autoPlay
+              className="mx-auto max-h-80 w-full bg-bg object-contain sm:max-h-96"
+            />
           ) : (
-            <label className="flex min-h-56 cursor-pointer flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-              <span className="flex items-center gap-2 text-primary">
-                <Smartphone className="size-7" />
-                <Upload className="size-7" />
-              </span>
-              <span className="font-display text-2xl tracking-wide">
-                Drop a phone clip here
-              </span>
-              <span className="max-w-sm text-sm text-muted">
-                Any recent phone. We read the fps from the file.
-              </span>
-              <input
-                type="file"
-                accept={FILE_ACCEPT}
-                className="sr-only"
-                onChange={(e) => void onFile(e.target.files?.[0])}
-              />
-            </label>
+            <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+              <div className="flex gap-2">
+                {([30, 60, 120] as const).map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    onClick={() => setRateChoice(rate)}
+                    className={cn(
+                      "h-9 rounded-full px-3 text-xs font-semibold",
+                      rateChoice === rate ? "bg-primary text-primary-fg" : "bg-surface text-muted",
+                    )}
+                  >
+                    {rate === 120 ? "Highest" : `${rate} fps`}
+                  </button>
+                ))}
+              </div>
+              <Button type="button" variant="primary" onClick={() => void startRecording()}>
+                <Smartphone className="size-4" />
+                Record here
+              </Button>
+              <label className="cursor-pointer text-sm font-semibold text-primary">
+                <Upload className="mr-1 inline size-4" />
+                Upload a clip
+                <input
+                  type="file"
+                  accept={FILE_ACCEPT}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    void onFile(file);
+                  }}
+                />
+              </label>
+              <p className="max-w-sm text-xs text-muted">
+                Record here stays on this page. Browsers usually allow 30 or 60
+                fps, not 240. For slo-mo, film in the Camera app, then upload
+                that file.
+              </p>
+            </div>
           )}
           {busy ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg/80 px-6 text-center">
@@ -496,8 +647,10 @@ export function HangTimeApp() {
         <div className="flex flex-col gap-3 border-t border-border p-4">
           <div className="flex items-center justify-between gap-3 text-sm">
             <p className="truncate text-muted">
-              {fileName ?? "No video yet"}
-              {videoUrl ? ` · ${fileFps} fps` : ""}
+              {recording
+                ? `Recording${liveFps ? ` · camera ${liveFps} fps` : ""}`
+                : (fileName ?? "No video yet")}
+              {!recording && videoUrl ? ` · ${fileFps} fps` : ""}
             </p>
             <p className="font-mono text-xs tabular-nums text-fg">
               Frame {Number.isFinite(frame) ? frame : 0}
@@ -606,6 +759,17 @@ export function HangTimeApp() {
               Reset marks
             </Button>
           </div>
+          {recording ? (
+            <Button type="button" variant="primary" onClick={stopRecording}>
+              Stop and measure
+            </Button>
+          ) : null}
+          {videoUrl ? (
+            <Button type="button" onClick={clearClip}>
+              <RotateCcw className="size-4" />
+              New clip
+            </Button>
+          ) : null}
 
           <p className="text-sm text-muted">
             Takeoff:{" "}
@@ -693,6 +857,7 @@ export function HangTimeApp() {
                     players.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
+                        {p.group_name ? ` · ${p.group_name}` : ""}
                       </option>
                     ))
                   )}

@@ -11,6 +11,7 @@ import {
   listPlayers,
   listTeamProgress,
   listTeams,
+  updatePlayer,
   type JumpRow,
   type PlayerRow,
   type TeamRow,
@@ -23,6 +24,11 @@ export function CoachPortal() {
   const [teamId, setTeamId] = useState<number | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [name, setName] = useState("");
+  const [group, setGroup] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editGroup, setEditGroup] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
   const [jumps, setJumps] = useState<JumpRow[]>([]);
   const [progress, setProgress] = useState<ProgressMap>(new Map());
@@ -38,6 +44,18 @@ export function CoachPortal() {
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
         .map((j) => ({ heightIn: j.height_in, at: j.created_at })),
     [jumps],
+  );
+
+  const groups = useMemo(() => {
+    const names = new Set<string>();
+    for (const player of players) {
+      if (player.group_name) names.add(player.group_name);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [players]);
+
+  const visiblePlayers = players.filter(
+    (player) => groupFilter === "all" || player.group_name === groupFilter,
   );
 
   async function refreshTeams() {
@@ -90,10 +108,15 @@ export function CoachPortal() {
     setBusy(true);
     setError(null);
     try {
-      const row = await addPlayer({ data: { name, teamId } });
+      const row = await addPlayer({ data: { name, teamId, groupName: group } });
       setName("");
       if (row) {
-        setPlayers((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+        setPlayers((prev) =>
+          [...prev, row].sort((a, b) =>
+            (a.group_name ?? "￿").localeCompare(b.group_name ?? "￿") ||
+            a.name.localeCompare(b.name),
+          ),
+        );
         setSelected(row.id);
       }
     } catch (err) {
@@ -121,6 +144,32 @@ export function CoachPortal() {
       await deleteJump({ data: id });
       setJumps((prev) => prev.filter((j) => j.id !== id));
       void refreshProgress(teamId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSavePlayer(e: FormEvent) {
+    e.preventDefault();
+    if (selected === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const row = await updatePlayer({
+        data: { id: selected, name: editName, groupName: editGroup },
+      });
+      setPlayers((prev) =>
+        prev
+          .map((player) => (player.id === row.id ? row : player))
+          .sort(
+            (a, b) =>
+              (a.group_name ?? "￿").localeCompare(b.group_name ?? "￿") ||
+              a.name.localeCompare(b.name),
+          ),
+      );
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update that player.");
     } finally {
       setBusy(false);
     }
@@ -180,6 +229,12 @@ export function CoachPortal() {
             placeholder="Player name"
             className="h-11 min-h-11 rounded-md bg-bg px-3 text-sm text-fg shadow-[var(--shadow-border)]"
           />
+          <input
+            value={group}
+            onChange={(e) => setGroup(e.target.value)}
+            placeholder="Group, optional — 1st hour, basketball"
+            className="h-11 min-h-11 rounded-md bg-bg px-3 text-sm text-fg shadow-[var(--shadow-border)]"
+          />
           <Button type="submit" variant="primary" disabled={busy || !name.trim()}>
             Add player
           </Button>
@@ -198,22 +253,60 @@ export function CoachPortal() {
             {inviteUrl}
           </p>
         ) : null}
+        {groups.length > 0 ? (
+          <div className="mt-3 flex shrink-0 gap-2 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setGroupFilter("all")}
+              className={`h-9 shrink-0 rounded-full px-3 text-xs font-semibold ${
+                groupFilter === "all" ? "bg-primary text-primary-fg" : "bg-bg text-muted"
+              }`}
+            >
+              All
+            </button>
+            {groups.map((label) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  setGroupFilter(label);
+                  setGroup(label);
+                }}
+                className={`h-9 shrink-0 rounded-full px-3 text-xs font-semibold ${
+                  groupFilter === label ? "bg-primary text-primary-fg" : "bg-bg text-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <ul className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
-          {players.length === 0 ? (
-            <li className="text-sm text-muted">No players yet.</li>
+          {visiblePlayers.length === 0 ? (
+            <li className="text-sm text-muted">
+              {players.length === 0 ? "No players yet." : "No players in this group."}
+            </li>
           ) : (
-            players.map((p) => {
+            visiblePlayers.map((p) => {
               const spark = progress.get(p.id) ?? [];
               return (
                 <li key={p.id}>
                   <button
                     type="button"
-                    onClick={() => setSelected(p.id)}
+                    onClick={() => {
+                      setSelected(p.id);
+                      setEditing(false);
+                    }}
                     className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
                       selected === p.id ? "bg-primary/15 text-primary" : "text-fg hover:bg-fg/8"
                     }`}
                   >
-                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {p.name}
+                      {p.group_name ? (
+                        <span className="ml-2 text-xs font-normal text-muted">{p.group_name}</span>
+                      ) : null}
+                    </span>
                     {spark.length > 0 ? <JumpChart points={spark} compact /> : null}
                   </button>
                 </li>
@@ -237,15 +330,56 @@ export function CoachPortal() {
                 <h2 className="font-display text-2xl font-extrabold tracking-wide">
                   {players.find((p) => p.id === selected)?.name ?? "Player"}
                 </h2>
+                <p className="text-sm text-muted">
+                  {players.find((p) => p.id === selected)?.group_name || "No group"}
+                </p>
               </div>
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={() => void onRemovePlayer(selected)}
-              >
-                Remove player
-              </Button>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    const current = players.find((p) => p.id === selected);
+                    setEditName(current?.name ?? "");
+                    setEditGroup(current?.group_name ?? "");
+                    setEditing(true);
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onRemovePlayer(selected)}
+                >
+                  Remove player
+                </Button>
+              </div>
             </div>
+            {editing ? (
+              <form onSubmit={(e) => void onSavePlayer(e)} className="mt-3 flex flex-col gap-2">
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Player name"
+                  className="h-11 min-h-11 rounded-md bg-bg px-3 text-sm text-fg shadow-[var(--shadow-border)]"
+                />
+                <input
+                  value={editGroup}
+                  onChange={(e) => setEditGroup(e.target.value)}
+                  placeholder="Group — leave blank for none"
+                  className="h-11 min-h-11 rounded-md bg-bg px-3 text-sm text-fg shadow-[var(--shadow-border)]"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" variant="primary" disabled={busy || !editName.trim()}>
+                    Save
+                  </Button>
+                  <Button type="button" disabled={busy} onClick={() => setEditing(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : null}
             {jumps.length === 0 ? (
               <p className="mt-4 text-sm text-muted">
                 No jumps yet. Measure on the home page, then save to this player.
