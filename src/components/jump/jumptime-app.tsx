@@ -7,6 +7,7 @@ import {
   Play,
   RotateCcw,
   Smartphone,
+  SwitchCamera,
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -34,6 +35,10 @@ export function HangTimeApp() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const discardRef = useRef(false);
   const recordedFps = useRef<number | null>(null);
+  const facingRef = useRef<"user" | "environment">("environment");
+  const flippingRef = useRef(false);
+  const [facing, setFacing] = useState<"user" | "environment">("environment");
+  const [previewTick, setPreviewTick] = useState(0);
   const measuredSent = useRef(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [ownsUrl, setOwnsUrl] = useState(false);
@@ -205,7 +210,7 @@ export function HangTimeApp() {
     measuredSent.current = false;
   }
 
-  async function startRecording() {
+  async function armRecorder(facingMode: "user" | "environment") {
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("This browser can't open the camera here. Upload a clip instead.");
       return;
@@ -216,7 +221,7 @@ export function HangTimeApp() {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
-          facingMode: { ideal: "environment" },
+          facingMode,
           width: { ideal: 1280 },
           height: { ideal: 720 },
           frameRate: { ideal: 240 },
@@ -226,7 +231,7 @@ export function HangTimeApp() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: "environment" } },
+          video: { facingMode },
         });
       } catch {
         setError("Camera didn't open. Allow camera access, or upload a clip.");
@@ -234,6 +239,7 @@ export function HangTimeApp() {
       }
     }
     streamRef.current = stream;
+    setPreviewTick((n) => n + 1);
     const fps = Math.round(stream.getVideoTracks()[0]?.getSettings().frameRate || 0);
     setLiveFps(fps || null);
     recordedFps.current = fps || null;
@@ -258,13 +264,44 @@ export function HangTimeApp() {
       discardRef.current = false;
       const type = rec.mimeType || mime || "video/mp4";
       stopTracks();
+      if (discard) {
+        if (!flippingRef.current) setRecording(false);
+        return;
+      }
       setRecording(false);
-      if (discard) return;
       const ext = type.includes("mp4") ? "mp4" : "webm";
       void onFile(new File(chunks, `hangtime-${Date.now()}.${ext}`, { type }));
     };
     rec.start(1000);
     setRecording(true);
+  }
+
+  function startRecording() {
+    void armRecorder(facingRef.current);
+  }
+
+  async function flipCamera() {
+    if (flippingRef.current) return;
+    flippingRef.current = true;
+    const next = facingRef.current === "environment" ? "user" : "environment";
+    facingRef.current = next;
+    setFacing(next);
+    try {
+      discardRef.current = true;
+      const rec = recorderRef.current;
+      if (rec && rec.state !== "inactive") {
+        await new Promise<void>((resolve) => {
+          rec.addEventListener("stop", () => resolve(), { once: true });
+          rec.stop();
+        });
+      } else {
+        stopTracks();
+        discardRef.current = false;
+      }
+      await armRecorder(next);
+    } finally {
+      flippingRef.current = false;
+    }
   }
 
   function stopRecording() {
@@ -286,7 +323,7 @@ export function HangTimeApp() {
     if (!recording || !video || !stream) return;
     video.srcObject = stream;
     void video.play().catch(() => undefined);
-  }, [recording]);
+  }, [recording, previewTick]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -475,12 +512,17 @@ export function HangTimeApp() {
         <Step
           n="1"
           title="Film on any phone"
-          hint="Slo-mo, feet in the frame. 240 fps is best."
+          hint="Tap Record, or upload a 240 fps slo-mo."
         >
           <p>
-            Use the highest slo-mo your Camera app offers. 240 fps is best, 120
-            is great. Regular 1080p 30 or 60 fps still works. Prop the phone
-            and frame the feet. Bright light helps at 240+.
+            Tap Record to film without leaving this page. Use Flip if you need
+            the front camera to frame yourself. The browser uses the fastest
+            rate it can, usually 30 or 60 fps.
+          </p>
+          <p className="mt-3">
+            For the best number, shoot slo-mo in the Camera app at 240 fps,
+            then tap Upload a clip. 120 is great too. Prop the phone and keep
+            the feet in the frame.
           </p>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[28rem] text-left">
@@ -524,7 +566,7 @@ export function HangTimeApp() {
         <Step
           n="2"
           title="Drop it here"
-          hint="Drop the clip on this page, or tap the box."
+          hint="Or upload a clip you already filmed."
         >
           <p>
             Drop the clip on this page or tap the player to choose a file. mp4
@@ -592,7 +634,10 @@ export function HangTimeApp() {
               playsInline
               muted
               autoPlay
-              className="mx-auto max-h-80 w-full bg-bg object-contain sm:max-h-96"
+              className={cn(
+                "mx-auto max-h-80 w-full bg-bg object-contain sm:max-h-96",
+                facing === "user" ? "-scale-x-100" : "",
+              )}
             />
           ) : (
             <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
@@ -616,6 +661,16 @@ export function HangTimeApp() {
               </label>
             </div>
           )}
+          {recording ? (
+            <button
+              type="button"
+              onClick={() => void flipCamera()}
+              className="absolute top-3 right-3 z-10 inline-flex h-11 items-center gap-2 rounded-full bg-bg/80 px-4 text-sm font-semibold text-fg shadow-[var(--shadow-border)]"
+            >
+              <SwitchCamera className="size-4" />
+              Flip
+            </button>
+          ) : null}
           {busy ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg/80 px-6 text-center">
               <Loader2 className="size-8 animate-spin text-primary" />
