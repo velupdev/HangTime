@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { JumpChart } from "@/components/plus/jump-chart";
-import { exportFilename, jumpsToCsv, rosterToXlsx } from "@/lib/plus/export-file";
+import {
+  exportFilename,
+  jumpsToCsv,
+  parseExportScope,
+  rosterToXlsx,
+  scopeForView,
+  scopeKey,
+  type ExportScope,
+} from "@/lib/plus/export-file";
 import { formatHeight } from "@/lib/jump-math";
 import type { RosterExport } from "@/lib/plus/roster-export";
 import {
@@ -42,10 +50,18 @@ export function CoachPortal() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
+  const [exportScope, setExportScope] = useState<ExportScope>({ kind: "all" });
   const [readyFile, setReadyFile] = useState<ReadyFile | null>(null);
   const [revision, setRevision] = useState(0);
   const exportCache = useRef<{ key: string; data: RosterExport } | null>(null);
   const readyRef = useRef<ReadyFile | null>(null);
+  const viewScope = scopeForView(groupFilter, selected);
+  const viewKey = scopeKey(viewScope);
+  const [seenView, setSeenView] = useState(viewKey);
+  if (seenView !== viewKey) {
+    setSeenView(viewKey);
+    setExportScope(viewScope);
+  }
 
   const chartPoints = useMemo(
     () =>
@@ -119,7 +135,7 @@ export function CoachPortal() {
       if (readyRef.current) URL.revokeObjectURL(readyRef.current.url);
       readyRef.current = null;
     };
-  }, [teamId, groupFilter, revision]);
+  }, [teamId, revision, exportScope]);
 
   async function onAdd(e: FormEvent) {
     e.preventDefault();
@@ -229,13 +245,14 @@ export function CoachPortal() {
   }
 
   async function loadExport() {
-    const key = `${teamId ?? "all"}|${groupFilter}|${revision}`;
+    const key = `${teamId ?? "all"}|${scopeKey(exportScope)}|${revision}`;
     const cached = exportCache.current;
     if (cached?.key === key) return cached.data;
     const data = await exportRoster({
       data: {
         teamId,
-        groupName: groupFilter === "all" ? "" : groupFilter,
+        groupName: exportScope.kind === "group" ? exportScope.group : "",
+        playerId: exportScope.kind === "player" ? exportScope.playerId : null,
       },
     });
     exportCache.current = { key, data };
@@ -253,8 +270,13 @@ export function CoachPortal() {
         setError("Nothing to export.");
         return;
       }
-      const group = groupFilter === "all" ? null : groupFilter;
-      const filename = exportFilename(data.roster, group, format);
+      const subject =
+        exportScope.kind === "group"
+          ? exportScope.group
+          : exportScope.kind === "player"
+            ? (players.find((player) => player.id === exportScope.playerId)?.name ?? null)
+            : null;
+      const filename = exportFilename(data.roster, subject, format);
       const blob =
         format === "csv"
           ? new Blob([jumpsToCsv(data)], { type: "text/csv;charset=utf-8" })
@@ -275,7 +297,17 @@ export function CoachPortal() {
     }
   }
 
-  const exportScope = groupFilter === "all" ? "All players on this roster" : `Only ${groupFilter}`;
+  const scopedPlayers = players.filter((player) => {
+    if (exportScope.kind === "group") return player.group_name === exportScope.group;
+    if (exportScope.kind === "player") return player.id === exportScope.playerId;
+    return true;
+  });
+  const exportScopeLabel =
+    exportScope.kind === "all"
+      ? "All players"
+      : exportScope.kind === "group"
+        ? exportScope.group
+        : (players.find((player) => player.id === exportScope.playerId)?.name ?? "Player");
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_1fr] lg:items-start">
@@ -361,34 +393,62 @@ export function CoachPortal() {
           </div>
         ) : null}
         <div className="mt-3 shrink-0">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold tracking-[0.16em] text-muted uppercase">Export</p>
-            <p className="min-w-0 truncate text-xs text-muted">
-              {groupFilter === "all" ? "All players" : groupFilter}
-            </p>
-          </div>
+          <label
+            htmlFor="export-scope"
+            className="text-xs font-semibold tracking-[0.16em] text-muted uppercase"
+          >
+            Export
+          </label>
+          <select
+            id="export-scope"
+            data-testid="export-scope"
+            value={scopeKey(exportScope)}
+            onChange={(e) => setExportScope(parseExportScope(e.target.value))}
+            className="mt-1 h-11 min-h-11 w-full rounded-md bg-bg px-3 text-sm font-normal tracking-normal text-fg normal-case shadow-[var(--shadow-border)]"
+          >
+            <option value="all">All players</option>
+            {groups.length > 0 ? (
+              <optgroup label="Group">
+                {groups.map((label) => (
+                  <option key={label} value={scopeKey({ kind: "group", group: label })}>
+                    {label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {players.length > 0 ? (
+              <optgroup label="Player">
+                {players.map((player) => (
+                  <option key={player.id} value={scopeKey({ kind: "player", playerId: player.id })}>
+                    {player.name}
+                    {player.group_name ? ` — ${player.group_name}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Button
               type="button"
               data-testid="export-csv"
-              disabled={busy || exporting !== null || visiblePlayers.length === 0}
+              disabled={busy || exporting !== null || scopedPlayers.length === 0}
               onClick={() => void onExport("csv")}
-              aria-label={`Download CSV for ${exportScope}`}
+              aria-label={`Download CSV for ${exportScopeLabel}`}
             >
               {exporting === "csv" ? "Preparing…" : "CSV"}
             </Button>
             <Button
               type="button"
               data-testid="export-xlsx"
-              disabled={busy || exporting !== null || visiblePlayers.length === 0}
+              disabled={busy || exporting !== null || scopedPlayers.length === 0}
               onClick={() => void onExport("xlsx")}
-              aria-label={`Download Excel for ${exportScope}`}
+              aria-label={`Download Excel for ${exportScopeLabel}`}
             >
               {exporting === "xlsx" ? "Preparing…" : "Excel"}
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted">
-            {exportScope}. CSV lists every jump. Excel adds a summary sheet.
+            {exportScopeLabel}. Every saved jump. Excel also adds a summary.
           </p>
           {readyFile ? (
             <a

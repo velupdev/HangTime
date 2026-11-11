@@ -29,6 +29,8 @@ export type RosterExport = {
 export type RosterExportRequest = {
   teamId: number | null;
   groupName: string;
+  /** When set, the file is that one athlete. Ignored group labels cannot widen it. */
+  playerId?: number | null;
 };
 
 type PlayerQuery = {
@@ -70,15 +72,15 @@ export async function loadRosterExport(
 ): Promise<RosterExport> {
   const groupName = request.groupName.trim().slice(0, 40);
   const teamId = request.teamId;
+  const playerId =
+    request.playerId === null || request.playerId === undefined ? null : request.playerId;
 
   if (teamId !== null && !(await isMember(sql, userId, teamId))) {
     throw new Error("You are not on that roster.");
   }
 
   const population = await loadVisiblePlayers(sql, userId, teamId);
-  const filtered = groupName
-    ? population.filter((player) => (player.group_name ?? "").trim() === groupName)
-    : population;
+  const filtered = filterPlayers(population, groupName, playerId);
 
   const ids = filtered.map((player) => asId(player.id)).filter((id): id is number => id !== null);
   const jumps = await loadJumps(sql, userId, ids);
@@ -114,6 +116,20 @@ export async function loadRosterExport(
     roster: await rosterLabel(sql, teamId, players),
     players,
   };
+}
+
+function filterPlayers(
+  population: PlayerQuery[],
+  groupName: string,
+  playerId: number | null,
+): PlayerQuery[] {
+  if (playerId !== null) {
+    const matched = population.filter((player) => asId(player.id) === playerId);
+    if (matched.length === 0) throw new Error("That player is not on your roster.");
+    return matched;
+  }
+  if (!groupName) return population;
+  return population.filter((player) => (player.group_name ?? "").trim() === groupName);
 }
 
 async function isMember(sql: Sql, userId: string, teamId: number): Promise<boolean> {
@@ -164,6 +180,8 @@ async function loadVisiblePlayers(
 async function loadJumps(sql: Sql, userId: string, playerIds: number[]): Promise<JumpQuery[]> {
   if (playerIds.length === 0) return [];
   const placeholders = playerIds.map((_, index) => `$${index + 2}`).join(", ");
+  // No LIMIT: the file is the full jump history, including older tries and
+  // jumps saved by another coach on the same roster.
   return sql.query<JumpQuery>(
     `select j.player_id, j.height_in, j.flight_s, j.fps, j.notes, j.created_at
      from jumps j

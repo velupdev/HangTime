@@ -6,7 +6,10 @@ import {
   crc32,
   exportFilename,
   jumpsToCsv,
+  parseExportScope,
   rosterToXlsx,
+  scopeForView,
+  scopeKey,
 } from "./export-file.ts";
 import type { RosterExport } from "./roster-export.ts";
 
@@ -103,6 +106,80 @@ describe("rosterToXlsx", () => {
     assert.doesNotMatch(jumps, /Secret/);
     for (const header of SUMMARY_COLUMNS) assert.match(summary, new RegExp(escapeRegExp(header)));
     for (const header of JUMP_COLUMNS) assert.match(jumps, new RegExp(escapeRegExp(header)));
+  });
+});
+
+const history: RosterExport = {
+  roster: "Varsity",
+  players: [
+    {
+      name: "Alex",
+      group: "1st hour",
+      roster: "Varsity",
+      jumps: [
+        {
+          heightIn: 18,
+          flightS: 0.4,
+          fps: 240,
+          notes: "warmup",
+          at: "2026-01-15T10:00:00.000Z",
+        },
+        {
+          heightIn: 30,
+          flightS: 0.5,
+          fps: 240,
+          notes: null,
+          at: "2026-03-08T18:30:00.000Z",
+        },
+        {
+          heightIn: 24,
+          flightS: 0.45,
+          fps: 240,
+          notes: "latest",
+          at: "2026-04-01T12:00:00.000Z",
+        },
+      ],
+    },
+  ],
+};
+
+describe("full jump history", () => {
+  it("keeps every jump in the CSV and on the Excel Jumps sheet", () => {
+    const rows = parseCsv(jumpsToCsv(history).slice(1));
+    assert.deepEqual(
+      rows.slice(1).map((cells) => row(cells).Date),
+      ["2026-01-15", "2026-03-08", "2026-04-01"],
+    );
+    assert.equal(row(rows[1])["Vertical (in)"], "18.0");
+    assert.equal(row(rows[2])["Vertical (in)"], "30.0");
+    assert.equal(row(rows[3])["Vertical (in)"], "24.0");
+    assert.equal(row(rows[3])["Best (in)"], "30.0");
+    assert.equal(row(rows[3]).Jumps, "3");
+
+    const files = unzipStore(rosterToXlsx(history));
+    const jumps = text(files, "xl/worksheets/sheet2.xml");
+    const summary = text(files, "xl/worksheets/sheet1.xml");
+    assert.equal(jumps.match(/<row /g)?.length, 4);
+    assert.match(jumps, /2026-01-15/);
+    assert.match(jumps, /2026-03-08/);
+    assert.match(jumps, /2026-04-01/);
+    assert.match(jumps, /<v>18\.0<\/v>/);
+    assert.match(jumps, /<v>24\.0<\/v>/);
+    assert.equal(summary.match(/<row /g)?.length, 2);
+    assert.match(summary, /<v>3<\/v>/);
+    assert.match(summary, /<v>30\.0<\/v>/);
+  });
+});
+
+describe("export scope", () => {
+  it("follows the open athlete, then a group filter, and round-trips the select value", () => {
+    assert.deepEqual(scopeForView("all", null), { kind: "all" });
+    assert.deepEqual(scopeForView("all", 4), { kind: "player", playerId: 4 });
+    assert.deepEqual(scopeForView("1st hour", 4), { kind: "group", group: "1st hour" });
+    const key = scopeKey({ kind: "group", group: "100%" });
+    assert.deepEqual(parseExportScope(key), { kind: "group", group: "100%" });
+    assert.deepEqual(parseExportScope("player:12"), { kind: "player", playerId: 12 });
+    assert.deepEqual(parseExportScope("nope"), { kind: "all" });
   });
 });
 

@@ -1,5 +1,41 @@
 import type { ExportJump, ExportPlayer, RosterExport } from "./roster-export";
 
+/** What the coach chose to download. The file still contains every jump in that set. */
+export type ExportScope =
+  { kind: "all" } | { kind: "group"; group: string } | { kind: "player"; playerId: number };
+
+/**
+ * The scope that matches the portal. A group chip wins. With every group
+ * showing, the open athlete is the default. Otherwise the whole roster.
+ */
+export function scopeForView(groupFilter: string, selectedPlayerId: number | null): ExportScope {
+  if (groupFilter !== "all") return { kind: "group", group: groupFilter };
+  if (selectedPlayerId !== null) return { kind: "player", playerId: selectedPlayerId };
+  return { kind: "all" };
+}
+
+export function scopeKey(scope: ExportScope): string {
+  if (scope.kind === "all") return "all";
+  if (scope.kind === "group") return `group:${encodeURIComponent(scope.group)}`;
+  return `player:${scope.playerId}`;
+}
+
+export function parseExportScope(value: string): ExportScope {
+  if (value.startsWith("group:")) {
+    try {
+      const group = decodeURIComponent(value.slice("group:".length));
+      if (group) return { kind: "group", group };
+    } catch {
+      return { kind: "all" };
+    }
+  }
+  if (value.startsWith("player:")) {
+    const playerId = Number(value.slice("player:".length));
+    if (Number.isInteger(playerId) && playerId > 0) return { kind: "player", playerId };
+  }
+  return { kind: "all" };
+}
+
 /** Jump-log columns. Numbers stay unquoted in CSV so Excel sums them. */
 export const JUMP_COLUMNS = [
   "Athlete",

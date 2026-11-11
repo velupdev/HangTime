@@ -525,21 +525,29 @@ export const listTeamProgress = createServerFn({ method: "POST" })
     }));
   });
 
-/** One request for the coach's own roster (or the active group). The file is built in the browser. */
+/** One request for the coach's own roster, one group, or one athlete. The file is built in the browser. */
 export const exportRoster = createServerFn({ method: "POST" })
-  .validator((input: { teamId: number | null; groupName?: string | null }) => {
-    const teamId =
-      input.teamId === null || input.teamId === undefined ? null : Number(input.teamId);
-    if (teamId !== null && (!Number.isInteger(teamId) || teamId <= 0)) {
-      throw new Error("Unknown roster.");
-    }
-    return {
-      teamId,
-      groupName: String(input.groupName ?? "")
-        .trim()
-        .slice(0, 40),
-    };
-  })
+  .validator(
+    (input: { teamId: number | null; groupName?: string | null; playerId?: number | null }) => {
+      const teamId =
+        input.teamId === null || input.teamId === undefined ? null : Number(input.teamId);
+      if (teamId !== null && (!Number.isInteger(teamId) || teamId <= 0)) {
+        throw new Error("Unknown roster.");
+      }
+      const rawPlayer = input.playerId;
+      const playerId = rawPlayer === null || rawPlayer === undefined ? null : Number(rawPlayer);
+      if (playerId !== null && (!Number.isInteger(playerId) || playerId <= 0)) {
+        throw new Error("Unknown player.");
+      }
+      return {
+        teamId,
+        groupName: String(input.groupName ?? "")
+          .trim()
+          .slice(0, 40),
+        playerId,
+      };
+    },
+  )
   .middleware([authMiddleware])
   .handler(async ({ context, data }) => {
     const sql = await getSql();
