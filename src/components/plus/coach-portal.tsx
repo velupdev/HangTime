@@ -49,6 +49,7 @@ export function CoachPortal() {
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
   const [exportScope, setExportScope] = useState<ExportScope>({ kind: "all" });
   const [readyFile, setReadyFile] = useState<ReadyFile | null>(null);
@@ -392,75 +393,6 @@ export function CoachPortal() {
             ))}
           </div>
         ) : null}
-        <div className="mt-3 shrink-0">
-          <label
-            htmlFor="export-scope"
-            className="text-xs font-semibold tracking-[0.16em] text-muted uppercase"
-          >
-            Export
-          </label>
-          <select
-            id="export-scope"
-            data-testid="export-scope"
-            value={scopeKey(exportScope)}
-            onChange={(e) => setExportScope(parseExportScope(e.target.value))}
-            className="mt-1 h-11 min-h-11 w-full rounded-md bg-bg px-3 text-sm font-normal tracking-normal text-fg normal-case shadow-[var(--shadow-border)]"
-          >
-            <option value="all">All players</option>
-            {groups.length > 0 ? (
-              <optgroup label="Group">
-                {groups.map((label) => (
-                  <option key={label} value={scopeKey({ kind: "group", group: label })}>
-                    {label}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            {players.length > 0 ? (
-              <optgroup label="Player">
-                {players.map((player) => (
-                  <option key={player.id} value={scopeKey({ kind: "player", playerId: player.id })}>
-                    {player.name}
-                    {player.group_name ? ` — ${player.group_name}` : ""}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-          </select>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              data-testid="export-csv"
-              disabled={busy || exporting !== null || scopedPlayers.length === 0}
-              onClick={() => void onExport("csv")}
-              aria-label={`Download CSV for ${exportScopeLabel}`}
-            >
-              {exporting === "csv" ? "Preparing…" : "CSV"}
-            </Button>
-            <Button
-              type="button"
-              data-testid="export-xlsx"
-              disabled={busy || exporting !== null || scopedPlayers.length === 0}
-              onClick={() => void onExport("xlsx")}
-              aria-label={`Download Excel for ${exportScopeLabel}`}
-            >
-              {exporting === "xlsx" ? "Preparing…" : "Excel"}
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            {exportScopeLabel}. Every saved jump. Excel also adds a summary.
-          </p>
-          {readyFile ? (
-            <a
-              href={readyFile.url}
-              download={readyFile.filename}
-              data-testid="export-save"
-              className="mt-2 flex h-11 min-h-11 items-center justify-center rounded-md bg-primary px-3 text-sm font-semibold text-primary-fg"
-            >
-              Save {readyFile.format === "csv" ? "CSV" : "Excel"}
-            </a>
-          ) : null}
-        </div>
         <ul className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
           {visiblePlayers.length === 0 ? (
             <li className="text-sm text-muted">
@@ -495,6 +427,93 @@ export function CoachPortal() {
           )}
         </ul>
         {error ? <p className="mt-3 shrink-0 text-sm text-fg">{error}</p> : null}
+        <div className="mt-3 shrink-0 border-t border-border pt-3">
+          {exportOpen ? (
+            <div className="mb-3" id="export-options">
+              <label
+                htmlFor="export-scope"
+                className="text-xs font-semibold tracking-[0.16em] text-muted uppercase"
+              >
+                Who
+              </label>
+              <select
+                id="export-scope"
+                data-testid="export-scope"
+                value={scopeKey(exportScope)}
+                onChange={(e) => setExportScope(parseExportScope(e.target.value))}
+                className="mt-1 h-11 min-h-11 w-full rounded-md bg-bg px-3 text-sm font-normal tracking-normal text-fg normal-case shadow-[var(--shadow-border)]"
+              >
+                <option value="all">All players</option>
+                {groups.length > 0 ? (
+                  <optgroup label="Group">
+                    {groups.map((label) => (
+                      <option key={label} value={scopeKey({ kind: "group", group: label })}>
+                        {label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {players.length > 0 ? (
+                  <optgroup label="Player">
+                    {players.map((player) => (
+                      <option
+                        key={player.id}
+                        value={scopeKey({ kind: "player", playerId: player.id })}
+                      >
+                        {player.name}
+                        {player.group_name ? ` — ${player.group_name}` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  data-testid="export-csv"
+                  disabled={busy || exporting !== null || scopedPlayers.length === 0}
+                  onClick={() => void onExport("csv")}
+                  aria-label={`Download CSV for ${exportScopeLabel}`}
+                >
+                  {exporting === "csv" ? "Preparing…" : "CSV"}
+                </Button>
+                <Button
+                  type="button"
+                  data-testid="export-xlsx"
+                  disabled={busy || exporting !== null || scopedPlayers.length === 0}
+                  onClick={() => void onExport("xlsx")}
+                  aria-label={`Download Excel for ${exportScopeLabel}`}
+                >
+                  {exporting === "xlsx" ? "Preparing…" : "Excel"}
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                {exportScopeLabel}. Every saved jump. Excel also adds a summary.
+              </p>
+              {readyFile ? (
+                <a
+                  href={readyFile.url}
+                  download={readyFile.filename}
+                  data-testid="export-save"
+                  className="mt-2 flex h-11 min-h-11 items-center justify-center rounded-md bg-primary px-3 text-sm font-semibold text-primary-fg"
+                >
+                  Save {readyFile.format === "csv" ? "CSV" : "Excel"}
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            className="w-full"
+            variant={exportOpen ? "secondary" : "primary"}
+            aria-expanded={exportOpen}
+            aria-controls="export-options"
+            data-testid="export-toggle"
+            onClick={() => setExportOpen((open) => !open)}
+          >
+            {exportOpen ? "Hide export" : "Export results"}
+          </Button>
+        </div>
       </section>
 
       <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
