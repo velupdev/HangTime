@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
+import { clearCachedPlusOffer, loadPlusOffer } from "@/lib/plus/offer-cache";
 import { getPlusOffer, unlockPlus, type PlusOffer } from "@/lib/plus/server";
 import { plusCheckoutUrl, STRIPE_TEST_MODE } from "@/lib/plus/stripe";
 
@@ -21,11 +22,19 @@ export function PlusPaywall({ onUnlocked }: { onUnlocked: () => void }) {
   }, []);
 
   useEffect(() => {
-    void getPlusOffer()
-      .then(setOffer)
-      .catch(() =>
-        setOffer({ sold: 0, cap: 100, remaining: 100, lifetimeOpen: true }),
-      );
+    let cancelled = false;
+    void loadPlusOffer(() => getPlusOffer())
+      .then((next) => {
+        if (!cancelled) setOffer(next);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOffer({ sold: 0, cap: 100, remaining: 100, lifetimeOpen: true });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -54,6 +63,11 @@ export function PlusPaywall({ onUnlocked }: { onUnlocked: () => void }) {
     setError(null);
     try {
       await unlockPlus();
+      try {
+        clearCachedPlusOffer(window.sessionStorage);
+      } catch {
+        /* ignore */
+      }
       onUnlocked();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not unlock Plus.");

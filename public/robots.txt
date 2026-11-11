@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# HangTime (hangtimeplus.com) is a single-page jump tool plus a few
+# public pages. There is no blog and no public generate API.
