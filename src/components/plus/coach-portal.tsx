@@ -1,12 +1,23 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { JumpChart } from "@/components/plus/jump-chart";
+import {
+  exportFilename,
+  jumpsToCsv,
+  parseExportScope,
+  rosterToXlsx,
+  scopeForView,
+  scopeKey,
+  type ExportScope,
+} from "@/lib/plus/export-file";
 import { formatHeight } from "@/lib/jump-math";
+import type { RosterExport } from "@/lib/plus/roster-export";
 import {
   addPlayer,
   createCoachInvite,
   deleteJump,
   deletePlayer,
+  exportRoster,
   listJumps,
   listPlayers,
   listTeamProgress,
@@ -18,6 +29,8 @@ import {
 } from "@/lib/plus/server";
 
 type ProgressMap = Map<number, { heightIn: number; at: string }[]>;
+
+type ReadyFile = { url: string; filename: string; format: "csv" | "xlsx" };
 
 export function CoachPortal() {
   const [teams, setTeams] = useState<TeamRow[]>([]);
@@ -36,6 +49,19 @@ export function CoachPortal() {
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
+  const [exportScope, setExportScope] = useState<ExportScope>({ kind: "all" });
+  const [readyFile, setReadyFile] = useState<ReadyFile | null>(null);
+  const [revision, setRevision] = useState(0);
+  const exportCache = useRef<{ key: string; data: RosterExport } | null>(null);
+  const readyRef = useRef<ReadyFile | null>(null);
+  const viewScope = scopeForView(groupFilter, selected);
+  const viewKey = scopeKey(viewScope);
+  const [seenView, setSeenView] = useState(viewKey);
+  if (seenView !== viewKey) {
+    setSeenView(viewKey);
+    setExportScope(viewScope);
+  }
 
   const chartPoints = useMemo(
     () =>
@@ -103,6 +129,14 @@ export function CoachPortal() {
       .catch(() => setJumps([]));
   }, [selected]);
 
+  useEffect(() => {
+    setReadyFile(null);
+    return () => {
+      if (readyRef.current) URL.revokeObjectURL(readyRef.current.url);
+      readyRef.current = null;
+    };
+  }, [teamId, revision, exportScope]);
+
   async function onAdd(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -112,12 +146,14 @@ export function CoachPortal() {
       setName("");
       if (row) {
         setPlayers((prev) =>
-          [...prev, row].sort((a, b) =>
-            (a.group_name ?? "￿").localeCompare(b.group_name ?? "￿") ||
-            a.name.localeCompare(b.name),
+          [...prev, row].sort(
+            (a, b) =>
+              (a.group_name ?? "￿").localeCompare(b.group_name ?? "￿") ||
+              a.name.localeCompare(b.name),
           ),
         );
         setSelected(row.id);
+        setRevision((n) => n + 1);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add player.");
@@ -133,6 +169,7 @@ export function CoachPortal() {
       const next = players.filter((p) => p.id !== id);
       setPlayers(next);
       setSelected(next[0]?.id ?? null);
+      setRevision((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -143,6 +180,7 @@ export function CoachPortal() {
     try {
       await deleteJump({ data: id });
       setJumps((prev) => prev.filter((j) => j.id !== id));
+      setRevision((n) => n + 1);
       void refreshProgress(teamId);
     } finally {
       setBusy(false);
@@ -168,6 +206,7 @@ export function CoachPortal() {
           ),
       );
       setEditing(false);
+      setRevision((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update that player.");
     } finally {
@@ -197,13 +236,85 @@ export function CoachPortal() {
     }
   }
 
+  function rememberFile(next: ReadyFile | null) {
+    if (readyRef.current && readyRef.current.url !== next?.url) {
+      URL.revokeObjectURL(readyRef.current.url);
+    }
+    readyRef.current = next;
+    setReadyFile(next);
+  }
+
+  async function loadExport() {
+    const key = `${teamId ?? "all"}|${scopeKey(exportScope)}|${revision}`;
+    const cached = exportCache.current;
+    if (cached?.key === key) return cached.data;
+    const data = await exportRoster({
+      data: {
+        teamId,
+        groupName: exportScope.kind === "group" ? exportScope.group : "",
+        playerId: exportScope.kind === "player" ? exportScope.playerId : null,
+      },
+    });
+    exportCache.current = { key, data };
+    return data;
+  }
+
+  async function onExport(format: "csv" | "xlsx") {
+    if (exporting) return;
+    setExporting(format);
+    setError(null);
+    try {
+      const data = await loadExport();
+      if (data.players.length === 0) {
+        rememberFile(null);
+        setError("Nothing to export.");
+        return;
+      }
+      const subject =
+        exportScope.kind === "group"
+          ? exportScope.group
+          : exportScope.kind === "player"
+            ? (players.find((player) => player.id === exportScope.playerId)?.name ?? null)
+            : null;
+      const filename = exportFilename(data.roster, subject, format);
+      const blob =
+        format === "csv"
+          ? new Blob([jumpsToCsv(data)], { type: "text/csv;charset=utf-8" })
+          : xlsxBlob(rosterToXlsx(data));
+      const url = URL.createObjectURL(blob);
+      const next = { url, filename, format };
+      rememberFile(next);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not export.");
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  const scopedPlayers = players.filter((player) => {
+    if (exportScope.kind === "group") return player.group_name === exportScope.group;
+    if (exportScope.kind === "player") return player.id === exportScope.playerId;
+    return true;
+  });
+  const exportScopeLabel =
+    exportScope.kind === "all"
+      ? "All players"
+      : exportScope.kind === "group"
+        ? exportScope.group
+        : (players.find((player) => player.id === exportScope.playerId)?.name ?? "Player");
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,16rem)_1fr] lg:items-start">
       <section className="flex max-h-[calc(100dvh-6.5rem)] flex-col overflow-hidden rounded-lg bg-surface p-4 shadow-[var(--shadow-border)] lg:sticky lg:top-4">
         <h2 className="shrink-0 font-display text-xl font-extrabold tracking-wide">Players</h2>
         <p className="mt-1 shrink-0 text-sm text-muted">
-          Add yourself, or every athlete you coach. Invite another coach to this
-          same roster.
+          Add yourself, or every athlete you coach. Invite another coach to this same roster.
         </p>
         {teams.length > 1 ? (
           <label className="mt-3 block text-sm text-muted">
@@ -281,6 +392,75 @@ export function CoachPortal() {
             ))}
           </div>
         ) : null}
+        <div className="mt-3 shrink-0">
+          <label
+            htmlFor="export-scope"
+            className="text-xs font-semibold tracking-[0.16em] text-muted uppercase"
+          >
+            Export
+          </label>
+          <select
+            id="export-scope"
+            data-testid="export-scope"
+            value={scopeKey(exportScope)}
+            onChange={(e) => setExportScope(parseExportScope(e.target.value))}
+            className="mt-1 h-11 min-h-11 w-full rounded-md bg-bg px-3 text-sm font-normal tracking-normal text-fg normal-case shadow-[var(--shadow-border)]"
+          >
+            <option value="all">All players</option>
+            {groups.length > 0 ? (
+              <optgroup label="Group">
+                {groups.map((label) => (
+                  <option key={label} value={scopeKey({ kind: "group", group: label })}>
+                    {label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {players.length > 0 ? (
+              <optgroup label="Player">
+                {players.map((player) => (
+                  <option key={player.id} value={scopeKey({ kind: "player", playerId: player.id })}>
+                    {player.name}
+                    {player.group_name ? ` — ${player.group_name}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              data-testid="export-csv"
+              disabled={busy || exporting !== null || scopedPlayers.length === 0}
+              onClick={() => void onExport("csv")}
+              aria-label={`Download CSV for ${exportScopeLabel}`}
+            >
+              {exporting === "csv" ? "Preparing…" : "CSV"}
+            </Button>
+            <Button
+              type="button"
+              data-testid="export-xlsx"
+              disabled={busy || exporting !== null || scopedPlayers.length === 0}
+              onClick={() => void onExport("xlsx")}
+              aria-label={`Download Excel for ${exportScopeLabel}`}
+            >
+              {exporting === "xlsx" ? "Preparing…" : "Excel"}
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            {exportScopeLabel}. Every saved jump. Excel also adds a summary.
+          </p>
+          {readyFile ? (
+            <a
+              href={readyFile.url}
+              download={readyFile.filename}
+              data-testid="export-save"
+              className="mt-2 flex h-11 min-h-11 items-center justify-center rounded-md bg-primary px-3 text-sm font-semibold text-primary-fg"
+            >
+              Save {readyFile.format === "csv" ? "CSV" : "Excel"}
+            </a>
+          ) : null}
+        </div>
         <ul className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
           {visiblePlayers.length === 0 ? (
             <li className="text-sm text-muted">
@@ -347,11 +527,7 @@ export function CoachPortal() {
                 >
                   Edit
                 </Button>
-                <Button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void onRemovePlayer(selected)}
-                >
+                <Button type="button" disabled={busy} onClick={() => void onRemovePlayer(selected)}>
                   Remove player
                 </Button>
               </div>
@@ -389,10 +565,7 @@ export function CoachPortal() {
                 <JumpChart points={chartPoints} />
                 <ul className="mt-4 divide-y divide-border">
                   {jumps.map((j) => (
-                    <li
-                      key={j.id}
-                      className="flex items-center justify-between gap-3 py-3"
-                    >
+                    <li key={j.id} className="flex items-center justify-between gap-3 py-3">
                       <div className="min-w-0">
                         <p className="font-display text-2xl font-extrabold tabular-nums text-primary">
                           {formatHeight(j.height_in / 39.3700787, "in")}
@@ -422,6 +595,14 @@ export function CoachPortal() {
       </section>
     </div>
   );
+}
+
+function xlsxBlob(bytes: Uint8Array): Blob {
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  return new Blob([copy], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 }
 
 function jumpDay(value: string | Date | number | null | undefined): string {

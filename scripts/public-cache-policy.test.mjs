@@ -23,6 +23,7 @@ const functionPaths = [
   "/api/auth/get-session",
   "/api/auth/callback/google",
   "/_serverFn/src_lib_plus_server_ts--getPlusOffer_createServerFn_handler",
+  "/_serverFn/src_lib_plus_server_ts--exportRoster_createServerFn_handler",
   "/__grok/manifest.webmanifest",
   "/__grok/manifest.json",
   "/_vercel/cron",
@@ -64,7 +65,13 @@ test("public documents are the cacheable shells only", () => {
   for (const path of ["/", "/privacy", "/terms", "/login", "/plus"]) {
     assert.equal(isPublicDocument(path), true, path);
   }
-  for (const path of ["/admin", "/join/abc", "/api/auth/get-session", "/blog/1"]) {
+  for (const path of [
+    "/admin",
+    "/join/abc",
+    "/api/auth/get-session",
+    "/_serverFn/src_lib_plus_server_ts--exportRoster_createServerFn_handler",
+    "/blog/1",
+  ]) {
     assert.equal(isPublicDocument(path), false, path);
   }
 });
