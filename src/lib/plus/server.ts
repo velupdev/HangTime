@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { isAdminEmail } from "@/lib/admin/emails";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql, type Sql } from "@/lib/db";
+import { loadRosterExport } from "@/lib/plus/roster-export";
 
 export type PlayerRow = {
   id: number;
@@ -522,4 +523,25 @@ export const listTeamProgress = createServerFn({ method: "POST" })
       playerId,
       points,
     }));
+  });
+
+/** One request for the coach's own roster (or the active group). The file is built in the browser. */
+export const exportRoster = createServerFn({ method: "POST" })
+  .validator((input: { teamId: number | null; groupName?: string | null }) => {
+    const teamId =
+      input.teamId === null || input.teamId === undefined ? null : Number(input.teamId);
+    if (teamId !== null && (!Number.isInteger(teamId) || teamId <= 0)) {
+      throw new Error("Unknown roster.");
+    }
+    return {
+      teamId,
+      groupName: String(input.groupName ?? "")
+        .trim()
+        .slice(0, 40),
+    };
+  })
+  .middleware([authMiddleware])
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return loadRosterExport(sql, context.userId, data);
   });
