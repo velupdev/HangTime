@@ -1,9 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
+import { setResponseHeaders } from "@tanstack/react-start/server";
 import { isAdminEmail } from "@/lib/admin/emails";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql, type Sql } from "@/lib/db";
 import { loadRosterExport } from "@/lib/plus/roster-export";
+import {
+  OFFER_CACHE_CONTROL,
+  OFFER_CDN_CACHE_CONTROL,
+} from "../../../scripts/public-cache-policy.mjs";
 
 export type PlayerRow = {
   id: number;
@@ -63,7 +68,22 @@ function coalescePaid(source: string | null | undefined): boolean {
   return (source ?? "paid") === "paid";
 }
 
+const OFFER_MEMORY_MS = 60_000;
+let offerMemo: { at: number; offer: PlusOffer } | null = null;
+
+function rememberOffer(offer: PlusOffer): PlusOffer {
+  offerMemo = { at: Date.now(), offer };
+  return offer;
+}
+
+/** Drop the in-process copy after a paid membership changes. */
+export function clearPlusOfferMemo(): void {
+  offerMemo = null;
+}
+
 async function readOffer(): Promise<PlusOffer> {
+  const now = Date.now();
+  if (offerMemo && now - offerMemo.at < OFFER_MEMORY_MS) return offerMemo.offer;
   const sql = await getSql();
   const rows = await sql<{ n: number }>`
     select count(*) as n from plus_members
@@ -71,12 +91,12 @@ async function readOffer(): Promise<PlusOffer> {
   `;
   const sold = Number(rows[0]?.n ?? 0);
   const remaining = Math.max(0, LIFETIME_CAP - sold);
-  return {
+  return rememberOffer({
     sold,
     cap: LIFETIME_CAP,
     remaining,
     lifetimeOpen: sold < LIFETIME_CAP,
-  };
+  });
 }
 
 async function ensureOwnedTeam(sql: Sql, userId: string): Promise<number> {
@@ -172,9 +192,16 @@ async function applyPendingCompGrant(
   await sql`delete from plus_revocations where user_id = ${userId}`;
 }
 
-export const getPlusOffer = createServerFn({ method: "GET" }).handler(
-  async () => readOffer(),
-);
+export const getPlusOffer = createServerFn({ method: "GET" }).handler(async () => {
+  // Public count. CDN and the browser may reuse it; nothing here is per-user.
+  setResponseHeaders(
+    new Headers({
+      "Cache-Control": OFFER_CACHE_CONTROL,
+      "CDN-Cache-Control": OFFER_CDN_CACHE_CONTROL,
+    }),
+  );
+  return readOffer();
+});
 
 export const getPlusStatus = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -216,6 +243,7 @@ export const unlockPlus = createServerFn({ method: "POST" })
     `;
     await sql`delete from plus_revocations where user_id = ${context.userId}`;
     await ensureOwnedTeam(sql, context.userId);
+    clearPlusOfferMemo();
     return { plus: true };
   });
 
@@ -550,6 +578,13 @@ export const exportRoster = createServerFn({ method: "POST" })
   )
   .middleware([authMiddleware])
   .handler(async ({ context, data }) => {
+    // Per-coach roster. Never share this response from the CDN.
+    setResponseHeaders(
+      new Headers({
+        "Cache-Control": "private, no-store",
+        "CDN-Cache-Control": "no-store",
+      }),
+    );
     const sql = await getSql();
     return loadRosterExport(sql, context.userId, data);
   });

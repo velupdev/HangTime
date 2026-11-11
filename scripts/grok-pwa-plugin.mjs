@@ -17,6 +17,7 @@ import {
   renderWebManifest,
   snapshotOgIdentity,
 } from "./grok-pwa-shared.mjs";
+import { MANIFEST_CACHE_CONTROL } from "./public-cache-policy.mjs";
 
 export const GROK_OG_IDENTITY_ID = "virtual:grok-og-identity";
 
@@ -56,7 +57,7 @@ function serveGrokPwa(middlewares) {
       const body = Buffer.from(renderWebManifest(requestHost(req)), "utf8");
       res.statusCode = 200;
       res.setHeader("content-type", "application/manifest+json; charset=utf-8");
-      res.setHeader("cache-control", "no-cache");
+      res.setHeader("cache-control", MANIFEST_CACHE_CONTROL);
       res.setHeader("content-length", String(body.byteLength));
       res.end(body);
       return;

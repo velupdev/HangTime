@@ -2,6 +2,18 @@ import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
 import { GROK_PROVIDERS } from "./providers";
+import {
+  cookieHas,
+  isGetSessionUrl,
+  isPublicProductionHost,
+  planSessionFetch,
+  SESSION_PROBED_KEY,
+  sessionBodyIsSignedOut,
+} from "./session-fetch";
+import {
+  SIGNED_IN_HINT_COOKIE,
+  signedInHintCookie,
+} from "./signed-in-hint";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -25,8 +37,90 @@ export const authClient = createAuthClient({
       if (token) ctx.headers.set("Authorization", `Bearer ${token}`);
       return ctx;
     },
+    customFetchImpl: (input, init) => fetchSessionAware(input, init),
   },
 });
+
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function browserCookie(): string {
+  try {
+    return typeof document === "undefined" ? "" : document.cookie;
+  } catch {
+    return "";
+  }
+}
+
+function storageGet(key: string): string | null {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function storageSet(key: string, value: string): void {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function writeHintCookie(action: "set" | "clear"): void {
+  try {
+    if (typeof document === "undefined") return;
+    document.cookie = signedInHintCookie(action);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * On hangtimeplus.com, skip `/get-session` for the rest of this tab once
+ * we have seen a signed-out response. A new tab probes again, so a Grok
+ * gate session can still be created. Signed-in, gate, bearer, and
+ * non-production hosts always hit the network. See `planSessionFetch`.
+ */
+async function fetchSessionAware(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+  const url = requestUrl(input);
+  if (typeof window === "undefined" || !isGetSessionUrl(url, method)) {
+    return fetch(input, init);
+  }
+
+  const plan = planSessionFetch({
+    host: window.location.hostname,
+    cookieHeader: browserCookie(),
+    hasBearer: Boolean(getBearerToken()),
+    probed: storageGet(SESSION_PROBED_KEY) === "1",
+  });
+  if (plan === "anonymous") {
+    return new Response("null", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  const response = await fetch(input, init);
+  if (!isPublicProductionHost(window.location.hostname) || !response.ok) return response;
+  storageSet(SESSION_PROBED_KEY, "1");
+  try {
+    const body = await response.clone().text();
+    if (sessionBodyIsSignedOut(body)) {
+      if (cookieHas(browserCookie(), SIGNED_IN_HINT_COOKIE)) writeHintCookie("clear");
+    } else {
+      writeHintCookie("set");
+    }
+  } catch {
+    /* leave the hint alone if the body cannot be read */
+  }
+  return response;
+}
 
 /**
  * True when sign-in UI should be shown — i.e. whenever `VITE_AUTH_ENABLED` is
@@ -254,6 +348,11 @@ export async function signOut(redirectTo = "/"): Promise<void> {
     requestSignOut: async () => {
       const { error } = await authClient.signOut();
       if (error) throw new Error(error.message ?? "Sign-out failed");
+      // The auth response also expires the hint. Clear it here so the next
+      // document, which may load before that Set-Cookie is observed, does
+      // not keep calling get-session for a session that is gone.
+      writeHintCookie("clear");
+      storageSet(SESSION_PROBED_KEY, "1");
     },
     clearToken: () => setBearerToken(null),
     redirect: () => {
