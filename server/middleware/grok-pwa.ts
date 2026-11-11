@@ -24,6 +24,7 @@ import {
   renderInstallPageHtml,
   renderWebManifest,
 } from "../../scripts/grok-pwa-shared.mjs";
+import { MANIFEST_CACHE_CONTROL } from "../../scripts/public-cache-policy.mjs";
 
 interface GrokPwaEvent {
   url: URL;
@@ -74,7 +75,7 @@ export default async function grokPwaMiddleware(
     return new Response(renderWebManifest(requestHost(event)), {
       headers: {
         "content-type": "application/manifest+json; charset=utf-8",
-        "cache-control": "no-cache",
+        "cache-control": MANIFEST_CACHE_CONTROL,
       },
     });
   }

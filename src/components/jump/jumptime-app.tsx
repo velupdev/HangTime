@@ -17,6 +17,7 @@ import { computeJump, formatHeight } from "@/lib/jump-math";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { prepareVideoFile } from "@/lib/prepare-video";
+import { loadPlusOffer } from "@/lib/plus/offer-cache";
 import { addJump, getPlusOffer, getPlusStatus, listPlayers, type PlayerRow } from "@/lib/plus/server";
 import { type VideoMeta } from "@/lib/video-meta";
 import { trackUsage } from "@/lib/usage";
@@ -79,9 +80,17 @@ export function HangTimeApp() {
   }, []);
 
   useEffect(() => {
-    void getPlusOffer()
-      .then((o) => setSpotsLeft(o.remaining))
-      .catch(() => setSpotsLeft(null));
+    let cancelled = false;
+    void loadPlusOffer(() => getPlusOffer())
+      .then((offer) => {
+        if (!cancelled) setSpotsLeft(offer.remaining);
+      })
+      .catch(() => {
+        if (!cancelled) setSpotsLeft(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
